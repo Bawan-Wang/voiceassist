@@ -1,0 +1,28 @@
+display:
+  width: 1280
+  height: 720
+  fullscreen: false
+  fps: 60
+colors:
+  idle: "#FFFFFF"
+  listening: "#FFE29A"
+  thinking: "#E3C9FF"
+  speaking: "#BFF3C1"
+  background: "#10121a"
+  text_primary: "#fefefe"
+  text_secondary: "#bfc6d0"
+assets:
+  face_outline_width: 16
+  face_radius: 200
+  eye_radius: 18
+  mouth_width: 90
+  mouth_height: 32
+  blink_interval: 4.0  # seconds
+  ear_width: 140
+  ear_height: 260
+  inner_ear_rgb: [255, 170, 200]
+  outline_rgb: [70, 48, 40]
+  cheek_rgb: [255, 140, 190]
+messageSource:
+  path: "data/demo_state.json"
+  poll_interval: 0.5
