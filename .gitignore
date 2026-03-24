@@ -9,6 +9,9 @@ __pycache__/
 venv/
 env/
 
+# Runtime state
+data/demo_state.json
+
 # Misc
 *.log
 .DS_Store
