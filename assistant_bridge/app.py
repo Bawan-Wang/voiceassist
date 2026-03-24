@@ -21,7 +21,7 @@ class AssistResponse(BaseModel):
     meta: Optional[Dict[str, Any]] = None
 
 
-OPENAI_MODEL = os.environ.get("ZERO_OPENAI_MODEL", "gpt-5.3-codex")
+OPENAI_MODEL = os.environ.get("ZERO_OPENAI_MODEL", "gpt-4o-mini")
 WEATHER_SCRIPT = os.environ.get("ZERO_WEATHER_SCRIPT", "/home/jh-pi/workspace/weather/weather.py")
 VOICE_DIR = Path("/home/jh-pi/.openclaw/workspace/voiceassist")
 PHOTOFRAME_SCRIPT = str(VOICE_DIR / "run_photoframe.sh")
@@ -210,7 +210,7 @@ def zero_assistant(req: AssistRequest):
                 "content": [
                     {
                         "type": "input_text",
-                        "text": "你是 Rabbit Bunny，簡短、自然、親切回答，優先使用使用者語言。",
+                        "text": "你是一個自然、親切的語音助理。\n\n回答規則：\n1. 用口語回答，不要像寫文章。\n2. 句子要短。\n3. 不要用條列式。\n4. 偶爾加入「嗯」、「好」、「我看看」這種口語。\n5. 回答控制在1~2句。", 
                     }
                 ],
             },
