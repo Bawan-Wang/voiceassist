@@ -183,7 +183,7 @@ class VoiceBridge:
         import requests
         url = "http://127.0.0.1:8000/zero-assistant"
         try:
-            resp = requests.post(url, json={"text": prompt}, timeout=8)
+            resp = requests.post(url, json={"text": prompt}, timeout=45)
             resp.raise_for_status()
             data = resp.json()
             reply = data.get("reply_text", "")

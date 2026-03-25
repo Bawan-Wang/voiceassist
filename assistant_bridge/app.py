@@ -31,6 +31,7 @@ BUNNY_CMD = f"cd {VOICE_DIR} && DISPLAY=:0 nohup .venv/bin/python main.py >/tmp/
 PHOTO_CMD = f"DISPLAY=:0 nohup /home/jh-pi/.openclaw/workspace/voiceassist/run_photoframe.sh >/tmp/photoframe.log 2>&1 & echo $! > {PHOTO_PID}"
 
 _LAST_ACTION = {"name": "", "ts": 0.0}
+USE_OPENCLAW_AGENT = os.environ.get("ZERO_USE_OPENCLAW_AGENT", "0") == "1"
 
 
 def resolve_openai_key() -> str:
@@ -55,6 +56,40 @@ def run_weather(location: str = "Taipei") -> str:
         return out.strip()
     except Exception as exc:
         return f"天氣腳本執行失敗：{exc}"
+
+
+def rewrite_weather_natural(raw_weather: str, query: str) -> str:
+    """Turn rigid weather output into short conversational Chinese (1-2 sentences)."""
+    try:
+        from openai import OpenAI
+        api_key = resolve_openai_key()
+        if not api_key:
+            return raw_weather
+        client = OpenAI(api_key=api_key)
+        prompt = [
+            {
+                "role": "system",
+                "content": [{
+                    "type": "input_text",
+                    "text": "你是自然親切的語音助理。把天氣原始資料改寫成口語中文、1~2句、不用條列。保留重點：天氣、溫度區間、是否下雨、穿搭建議。"
+                }]
+            },
+            {
+                "role": "user",
+                "content": [{
+                    "type": "input_text",
+                    "text": f"使用者問題：{query}\n\n天氣原始資料：\n{raw_weather}"
+                }]
+            }
+        ]
+        resp = client.responses.create(model=OPENAI_MODEL, input=prompt)
+        for item in getattr(resp, "output", []):
+            for c in getattr(item, "content", []):
+                if getattr(c, "type", None) in ("output_text", "text") and getattr(c, "text", "").strip():
+                    return c.text.strip()
+        return raw_weather
+    except Exception:
+        return raw_weather
 
 
 def _debounce(action: str, seconds: float = 2.5) -> bool:
@@ -184,9 +219,6 @@ def zero_assistant(req: AssistRequest):
 
     # Local command intents first
     tl = text.lower()
-    if "天氣" in text or "weather" in tl:
-        weather = run_weather("Taipei")
-        return AssistResponse(reply_text=weather, meta={"source": "local-weather"})
 
     if ("打開" in text or "開啟" in text) and ("相框" in text or "photoframe" in tl):
         msg = open_photoframe()
@@ -196,7 +228,51 @@ def zero_assistant(req: AssistRequest):
         msg = open_bunny_ui()
         return AssistResponse(reply_text=msg, meta={"source": "local-command", "action": "open_bunny"})
 
-    # LLM path: Copilot/OpenAI model
+    # Weather: fetch real data, then rewrite naturally
+    if "天氣" in text or "weather" in tl:
+        raw = run_weather("Taichung" if "台中" in text else "Taipei")
+        natural = rewrite_weather_natural(raw, text)
+        return AssistResponse(reply_text=natural, meta={"source": "weather+rewrite"})
+
+    # LLM path: default to fast local OpenAI; optionally route via OpenClaw agent when enabled
+    if USE_OPENCLAW_AGENT:
+        try:
+            import json as _json
+
+            def _extract_text(node):
+                if isinstance(node, dict):
+                    payloads = (
+                        node.get("result", {}).get("payloads")
+                        if isinstance(node.get("result"), dict)
+                        else node.get("payloads")
+                    )
+                    if isinstance(payloads, list):
+                        for p in payloads:
+                            if isinstance(p, dict) and isinstance(p.get("text"), str) and p.get("text").strip():
+                                return p.get("text").strip()
+                if isinstance(node, str):
+                    return node.strip()
+                if isinstance(node, dict):
+                    for v in node.values():
+                        got = _extract_text(v)
+                        if got:
+                            return got
+                if isinstance(node, list):
+                    for it in node:
+                        got = _extract_text(it)
+                        if got:
+                            return got
+                return ""
+
+            cmd = ["openclaw", "agent", "--channel", "telegram", "--to", "8765443076", "--message", text, "--json"]
+            out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT, timeout=35)
+            data = _json.loads(out)
+            reply = _extract_text(data)
+            if reply:
+                return AssistResponse(reply_text=reply, meta={"source": "openclaw-agent"})
+        except Exception:
+            pass
+
     try:
         from openai import OpenAI
 
@@ -207,29 +283,23 @@ def zero_assistant(req: AssistRequest):
         prompt = [
             {
                 "role": "system",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": "你是一個自然、親切的語音助理。\n\n回答規則：\n1. 用口語回答，不要像寫文章。\n2. 句子要短。\n3. 不要用條列式。\n4. 偶爾加入「嗯」、「好」、「我看看」這種口語。\n5. 回答控制在1~2句。", 
-                    }
-                ],
+                "content": [{"type": "input_text", "text": "你是一個自然、親切的語音助理。\n\n回答規則：\n1. 用口語回答，不要像寫文章。\n2. 句子要短。\n3. 不要用條列式。\n4. 偶爾加入「嗯」、「好」、「我看看」這種口語。\n5. 回答控制在1~2句。"}],
             },
             {"role": "user", "content": [{"type": "input_text", "text": text}]},
         ]
         resp = client.responses.create(model=OPENAI_MODEL, input=prompt)
 
         reply = ""
-        if getattr(resp, "output", None):
-            for item in resp.output:
-                for content in getattr(item, "content", []):
-                    if getattr(content, "type", None) in ("output_text", "text"):
-                        reply = content.text
-                        break
-                if reply:
+        for item in getattr(resp, "output", []):
+            for content in getattr(item, "content", []):
+                if getattr(content, "type", None) in ("output_text", "text"):
+                    reply = content.text
                     break
+            if reply:
+                break
 
         if not reply:
             reply = "抱歉，我暫時無法產生回覆。"
-        return AssistResponse(reply_text=reply, meta={"model": OPENAI_MODEL})
+        return AssistResponse(reply_text=reply, meta={"model": OPENAI_MODEL, "source": "fallback-openai"})
     except Exception as exc:
         return AssistResponse(reply_text="抱歉，我剛剛出現錯誤。", meta={"error": str(exc)})
