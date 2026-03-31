@@ -20,7 +20,8 @@ import pygame
 import yaml
 
 BASE_DIR = Path(__file__).parent
-DEFAULT_CONFIG = BASE_DIR / "config.yaml"
+PROJECT_DIR = BASE_DIR.parent
+DEFAULT_CONFIG = PROJECT_DIR / "config.yaml"
 
 PHASES = ("idle", "listening", "thinking", "speaking")
 
@@ -306,7 +307,7 @@ def main() -> None:
     colors["background"] = hex_to_rgb(cfg["colors"]["background"])
 
     renderer = CuteFaceRenderer(screen, cfg)
-    feed = JsonStateFeed(BASE_DIR / cfg["messageSource"]["path"])
+    feed = JsonStateFeed(PROJECT_DIR / cfg["messageSource"]["path"])
 
     running = True
     start_time = time.time()
