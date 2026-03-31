@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE_DIR="/home/jh-pi/.openclaw/workspace/voiceassist"
+PY="$BASE_DIR/.venv/bin/python"
+VOICE="${RABBIT_VOICE:-shimmer}"
+WAKE="${RABBIT_WAKE:-兔兔助理}"
+PLAYBACK="${RABBIT_PLAYBACK:-plughw:2,0}"
+OPENAI_API_KEY_VALUE="${OPENAI_API_KEY:-}"
+
+if [[ -z "$OPENAI_API_KEY_VALUE" && -f "$HOME/.bashrc" ]]; then
+  # best-effort read from bashrc export line
+  OPENAI_API_KEY_VALUE="$(grep -E 'OPENAI_API_KEY\s*=\s*"' "$HOME/.bashrc" | sed -E 's/.*OPENAI_API_KEY\s*=\s*"([^"]+)".*/\1/' | tail -n1 || true)"
+fi
+
+kill_all() {
+  pkill -9 -f "python assistant_ui.py" || true
+  pkill -9 -f "voice_bridge.py" || true
+  pkill -9 -f "uvicorn assistant_bridge.app" || true
+  pkill -9 -f "/home/jh-pi/workspace/photoframe/main.py" || true
+  pkill -9 -f "run_photoframe.sh" || true
+}
+
+status() {
+  echo "=== rabbit status ==="
+  pgrep -af "uvicorn assistant_bridge.app" || echo "assistant_bridge: stopped"
+  pgrep -af "python assistant_ui.py" || echo "bunny_ui: stopped"
+  pgrep -af "voice_bridge.py" || echo "voice_bridge: stopped"
+  pgrep -af "/home/jh-pi/workspace/photoframe/main.py" || echo "photoframe: stopped"
+}
+
+start() {
+  if [[ -z "$OPENAI_API_KEY_VALUE" ]]; then
+    echo "ERROR: OPENAI_API_KEY not found (env or ~/.bashrc)"
+    exit 1
+  fi
+
+  kill_all
+  cd "$BASE_DIR"
+
+  OPENAI_API_KEY="$OPENAI_API_KEY_VALUE" nohup "$PY" -m uvicorn assistant_bridge.app:app --host 127.0.0.1 --port 8000 --log-level warning >/tmp/assistant_bridge.log 2>&1 &
+  DISPLAY=:0 nohup "$PY" assistant_ui.py >/tmp/bunny_ui.log 2>&1 &
+  OPENAI_API_KEY="$OPENAI_API_KEY_VALUE" nohup "$PY" voice_bridge.py --playback-device "$PLAYBACK" --wake "$WAKE" --voice "$VOICE" >/tmp/voice_bridge.log 2>&1 &
+
+  sleep 1
+  echo "Rabbit started."
+  status
+}
+
+stop() {
+  kill_all
+  echo "Rabbit stopped."
+  status
+}
+
+restart() {
+  stop
+  start
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  start) start ;;
+  stop) stop ;;
+  restart) restart ;;
+  status) status ;;
+  *)
+    echo "Usage: $0 {start|stop|restart|status}"
+    echo "Optional env: RABBIT_VOICE, RABBIT_WAKE, RABBIT_PLAYBACK, OPENAI_API_KEY"
+    exit 1
+    ;;
+esac

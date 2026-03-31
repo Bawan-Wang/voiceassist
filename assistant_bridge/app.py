@@ -27,7 +27,7 @@ VOICE_DIR = Path("/home/jh-pi/.openclaw/workspace/voiceassist")
 PHOTOFRAME_SCRIPT = str(VOICE_DIR / "run_photoframe.sh")
 BUNNY_PID = "/tmp/voiceassist_bunny.pid"
 PHOTO_PID = "/tmp/voiceassist_photo.pid"
-BUNNY_CMD = f"cd {VOICE_DIR} && DISPLAY=:0 nohup .venv/bin/python main.py >/tmp/bunny_ui.log 2>&1 & echo $! > {BUNNY_PID}"
+BUNNY_CMD = f"cd {VOICE_DIR} && DISPLAY=:0 nohup .venv/bin/python assistant_ui.py >/tmp/bunny_ui.log 2>&1 & echo $! > {BUNNY_PID}"
 PHOTO_CMD = f"DISPLAY=:0 nohup /home/jh-pi/.openclaw/workspace/voiceassist/run_photoframe.sh >/tmp/photoframe.log 2>&1 & echo $! > {PHOTO_PID}"
 
 _LAST_ACTION = {"name": "", "ts": 0.0}
@@ -165,7 +165,7 @@ def open_photoframe() -> str:
 
         _kill_pidfile(BUNNY_PID)
         _kill_pidfile(PHOTO_PID)
-        _kill_all("python main.py")
+        _kill_all("python assistant_ui.py")
         _kill_all("run_photoframe.sh")
         _kill_all("/home/jh-pi/workspace/photoframe/main.py")
         time.sleep(0.2)
@@ -196,14 +196,14 @@ def open_bunny_ui() -> str:
         _kill_pidfile(BUNNY_PID)
         _kill_all("run_photoframe.sh")
         _kill_all("/home/jh-pi/workspace/photoframe/main.py")
-        _kill_all("python main.py")
+        _kill_all("python assistant_ui.py")
         time.sleep(0.2)
         subprocess.run(["bash", "-lc", BUNNY_CMD], check=False)
         time.sleep(0.6)
 
         # enforce singleton
-        if _count("python main.py") > 1:
-            _kill_all("python main.py")
+        if _count("python assistant_ui.py") > 1:
+            _kill_all("python assistant_ui.py")
             subprocess.run(["bash", "-lc", BUNNY_CMD], check=False)
 
         return "好的，已切回兔兔助理畫面。"
