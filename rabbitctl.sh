@@ -6,6 +6,21 @@ PY="$BASE_DIR/.venv/bin/python"
 VOICE="${RABBIT_VOICE:-shimmer}"
 WAKE="${RABBIT_WAKE:-兔兔助理}"
 PLAYBACK="${RABBIT_PLAYBACK:-plughw:2,0}"
+INPUT_DEVICE="${RABBIT_INPUT_DEVICE:-}"
+
+# Auto-detect pulse device index if not manually set
+if [[ -z "$INPUT_DEVICE" ]]; then
+  INPUT_DEVICE="$("$PY" -c "
+import sounddevice as sd
+for i, d in enumerate(sd.query_devices()):
+    if d['max_input_channels'] > 0 and 'pulse' in d['name'].lower():
+        try:
+            sd.check_input_settings(device=i, samplerate=16000, channels=1, dtype='int16')
+            print(i); break
+        except: pass
+" 2>/dev/null)"
+  INPUT_DEVICE="${INPUT_DEVICE:-1}"  # fallback to 1 if detection fails
+fi
 OPENAI_API_KEY_VALUE="${OPENAI_API_KEY:-}"
 
 if [[ -z "$OPENAI_API_KEY_VALUE" && -f "$HOME/.bashrc" ]]; then
@@ -40,7 +55,7 @@ start() {
 
   OPENAI_API_KEY="$OPENAI_API_KEY_VALUE" nohup "$PY" -m uvicorn api.app:app --host 127.0.0.1 --port 8000 --log-level warning >/tmp/assistant_bridge.log 2>&1 &
   DISPLAY=:0 nohup "$PY" ui/assistant_ui.py "$BASE_DIR/config.yaml" >/tmp/bunny_ui.log 2>&1 &
-  OPENAI_API_KEY="$OPENAI_API_KEY_VALUE" nohup "$PY" bridge/voice_bridge.py --playback-device "$PLAYBACK" --wake "$WAKE" --voice "$VOICE" >/tmp/voice_bridge.log 2>&1 &
+  OPENAI_API_KEY="$OPENAI_API_KEY_VALUE" nohup "$PY" -u bridge/voice_bridge.py --input-device "$INPUT_DEVICE" --playback-device "$PLAYBACK" --wake "$WAKE" --voice "$VOICE" >/tmp/voice_bridge.log 2>&1 &
 
   sleep 1
   echo "Rabbit started."

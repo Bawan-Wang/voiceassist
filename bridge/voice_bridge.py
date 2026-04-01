@@ -187,12 +187,15 @@ class VoiceBridge:
             resp.raise_for_status()
             data = resp.json()
             reply = data.get("reply_text", "")
-            return reply.strip() if reply else ""
+            result = reply.strip() if reply else ""
+            print(f"[voice_bridge] Reply: {result[:80]}{'...' if len(result)>80 else ''}")
+            return result
         except Exception as exc:  # pylint: disable=broad-except
             print(f"[voice_bridge] Bridge LLM error: {exc}")
             return ""
 
     def speak(self, text: str) -> None:
+        print(f"[voice_bridge] Speaking: {text[:60]}{'...' if len(text)>60 else ''}")
         try:
             with self.client.audio.speech.with_streaming_response.create(
                 model=TTS_MODEL,
