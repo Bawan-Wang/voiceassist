@@ -47,12 +47,52 @@ def resolve_openai_key() -> str:
     return ""
 
 
-def run_weather(location: str = "Taipei") -> str:
+def parse_weather_intent(text: str) -> tuple[str, int]:
+    """Extract (location, day_offset) from user query.
+    day_offset: 0=today, 1=tomorrow, 2=day after, ..."""
+    # Time intent
+    day = 0
+    if "昨天" in text:
+        day = -1  # sentinel: unsupported
+    elif "大後天" in text:
+        day = 3
+    elif "後天" in text:
+        day = 2
+    elif "明天" in text or "明日" in text:
+        day = 1
+    elif "今天" in text or "今日" in text or "現在" in text:
+        day = 0
+
+    # Location intent (add more cities as needed)
+    location = "Taipei"  # default
+    city_map = {
+        "台北": "Taipei", "臺北": "Taipei",
+        "台中": "Taichung", "臺中": "Taichung",
+        "台南": "Tainan", "臺南": "Tainan",
+        "高雄": "Kaohsiung",
+        "東京": "Tokyo", "大阪": "Osaka", "京都": "Kyoto",
+        "首爾": "Seoul", "釜山": "Busan",
+        "北京": "Beijing", "上海": "Shanghai", "香港": "Hong Kong",
+        "新加坡": "Singapore", "曼谷": "Bangkok",
+        "紐約": "New York", "洛杉磯": "Los Angeles", "倫敦": "London",
+        "巴黎": "Paris", "柏林": "Berlin", "雪梨": "Sydney",
+    }
+    for zh, en in city_map.items():
+        if zh in text:
+            location = en
+            break
+
+    return location, day
+
+
+def run_weather(location: str = "Taipei", day: int = 0) -> str:
+    if day < 0:
+        return "抱歉，我只能查今天和未來 6 天的天氣，沒辦法查昨天喔。"
     try:
-        out = subprocess.check_output([
-            WEATHER_SCRIPT,
-            location,
-        ], text=True, stderr=subprocess.STDOUT, timeout=20)
+        out = subprocess.check_output(
+            [WEATHER_SCRIPT, location, "--day", str(day)],
+            text=True, stderr=subprocess.STDOUT, timeout=20
+        )
         return out.strip()
     except Exception as exc:
         return f"天氣腳本執行失敗：{exc}"
@@ -230,9 +270,12 @@ def zero_assistant(req: AssistRequest):
 
     # Weather: fetch real data, then rewrite naturally
     if "天氣" in text or "weather" in tl:
-        raw = run_weather("Taichung" if "台中" in text else "Taipei")
+        location, day = parse_weather_intent(text)
+        raw = run_weather(location, day)
+        if day < 0:  # 昨天 → 直接回傳提示
+            return AssistResponse(reply_text=raw, meta={"source": "weather-unsupported"})
         natural = rewrite_weather_natural(raw, text)
-        return AssistResponse(reply_text=natural, meta={"source": "weather+rewrite"})
+        return AssistResponse(reply_text=natural, meta={"source": "weather+rewrite", "location": location, "day": day})
 
     # LLM path: default to fast local OpenAI; optionally route via OpenClaw agent when enabled
     if USE_OPENCLAW_AGENT:
