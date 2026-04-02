@@ -1,75 +1,118 @@
-# Zero Voice Display + Audio Bridge
+# voiceassist — Zero the Bunny Voice Assistant
 
-這個專案包含兩個部分：
+A Raspberry Pi voice assistant with an animated bunny face UI. Speak the wake word, ask a question, and Zero replies out loud while the face animates in sync.
 
-1. **PyGame 兔兔 UI (`main.py`)**：顯示 Zero 的臉、phase 動畫（傾聽時耳朵豎起、說話時嘴巴律動）以及最新一輪對話文字。
-2. **語音橋接程式 (`voice_bridge.py`)**：接上麥克風/喇叭，使用 OpenAI Whisper + GPT-4o + TTS 讓 Zero 真的能「聽你說→想→講」。
+## Architecture
 
-`data/demo_state.json` 是兩者之間的共享狀態。任何寫入這個 JSON 的程式都能驅動 UI。
+```
+Microphone
+    │
+    ▼
+bridge/voice_bridge.py   ← VAD → STT (Whisper) → wake word detection
+    │
+    │  POST /zero-assistant
+    ▼
+api/app.py (FastAPI)     ← LLM (GPT-4o-mini) + weather tool
+    │
+    │  writes data/demo_state.json
+    ▼
+ui/assistant_ui.py (PyGame)  ← polls JSON → animates face + text
+    │
+    ▼
+Speaker (ffplay ← TTS via OpenAI)
+```
 
-## 1. 安裝依賴
+| Component | File | Role |
+|---|---|---|
+| Bunny UI | `ui/assistant_ui.py` | PyGame animated face, polls `data/demo_state.json` |
+| Voice Bridge | `bridge/voice_bridge.py` | Mic capture, VAD, STT, wake word, TTS playback |
+| API Backend | `api/app.py` | FastAPI, LLM routing, weather intent parsing |
+| Control Script | `rabbitctl.sh` | Unified start / stop / restart / status |
+| UI Config | `config.yaml` | Resolution, colors, face dimensions |
+| Shared State | `data/demo_state.json` | Runtime state between bridge and UI (gitignored) |
+
+## Prerequisites
 
 ```bash
-cd /home/jh-pi/.openclaw/workspace/voice_display
+# System dependencies
+sudo apt install portaudio19-dev libportaudio2 ffmpeg
+
+# Python virtual environment
+cd /home/jh-pi/.openclaw/workspace/voiceassist
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> 第一次使用麥克風可能需要 `sudo apt install portaudio19-dev libportaudio2`。
-
-建立 `.env` 或 `export OPENAI_API_KEY=...` 以便語音橋接程式打 OpenAI API。
-
-## 2. 啟動兔兔 UI
+Set your OpenAI API key in `~/.bashrc`:
 
 ```bash
-source .venv/bin/activate
-python main.py  # or DISPLAY=:0 python main.py on the Pi display
+export OPENAI_API_KEY="sk-..."
 ```
 
-可在 `config.yaml` 調整解析度、顏色、全螢幕。`data/demo_state.json` 結構：
-
-```json
-{
-  "phase": "speaking",
-  "userText": "Hi Zero",
-  "assistantText": "嗨，我在這裡。",
-  "lastUpdate": "2026-03-17T23:00:00+08:00"
-}
-```
-
-## 3. 語音橋接 (`voice_bridge.py`)
-
-功能：
-- 以 WebRTC VAD 偵測語音，呼叫 OpenAI Whisper (`gpt-4o-transcribe`).
-- 強制喚醒詞「兔兔助理」（可改）；若同一句包含指令，會把喚醒詞之後的文字當成命令。
-- 使用 `gpt-4o-mini` 生成人性化回應，並用 `gpt-4o-mini-tts` 女聲（`voice=verse`）。
-- 同步更新 `data/demo_state.json`，讓 UI 顯示傾聽/思考/說話 phase 與文字。
-
-啟動：
+## Usage
 
 ```bash
-source .venv/bin/activate
-OPENAI_API_KEY=sk-... \
-python voice_bridge.py \
-  --input-device 2 \            # arecord -l 查看 USB speakerphone 的卡號
-  --playback-device plughw:2,0 \ # aplay -l 對應輸出裝置
-  --wake "兔兔助理" \             # 可改成別的喚醒詞
-  --voice verse                  # OpenAI TTS 聲線，可換 coral / lily / etc.
+# Start all services (API + UI + voice bridge)
+bash rabbitctl.sh start
+
+# Stop all services
+bash rabbitctl.sh stop
+
+# Restart
+bash rabbitctl.sh restart
+
+# Check running status
+bash rabbitctl.sh status
 ```
 
-程式啟動後的流程：
-1. 閒置時 phase=idle，兔兔臉保持平靜。
-2. 聽到說話 → phase=listening，耳朵豎起、文字顯示「Zero 正在傾聽中」。
-3. 偵測到喚醒詞 + 指令 → phase=thinking，顯示你說的內容。
-4. LLM 出結果 → phase=speaking，嘴巴動畫 + 女聲播放。
-5. 播放結束 → phase=idle 等下一次喚醒。
+Logs are written to:
+- `/tmp/assistant_bridge.log` — FastAPI backend
+- `/tmp/bunny_ui.log` — PyGame UI
+- `/tmp/voice_bridge.log` — Voice bridge (STT, wake word, replies)
 
-## 4. 後續擴充點子
+## Wake Word & Voice
 
-- **自訂指令**：在 `voice_bridge.py` 裡面攔截特定關鍵字（例：天氣）去呼叫其他腳本 (`/home/jh-pi/workspace/weather/weather.py`) 再把結果餵進 LLM。
-- **systemd 自動啟動**：分別為 UI、語音橋接建立 `systemd --user` 服務，登入後自動開機。
-- **多語提示**：目前系統提示鼓勵中英雙語，若要固定英文/中文可修改 `generate_reply()` 的 system prompt。
-- **嘴巴動畫**：在 `main.py` 可調整正弦頻率或張嘴幅度，讓說話更活潑。
+The default wake word is **「兔兔助理」**. Say the wake word followed by your command in the same sentence, e.g. *「兔兔助理，今天天氣怎麼樣？」*
 
-有需要我可以再幫你把語音橋接包成服務或加上調試工具。💬🎙️🐇
+Override defaults via environment variables before running `rabbitctl.sh`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `RABBIT_WAKE` | `兔兔助理` | Wake phrase |
+| `RABBIT_VOICE` | `shimmer` | OpenAI TTS voice |
+| `RABBIT_PLAYBACK` | `plughw:2,0` | ALSA playback device |
+| `RABBIT_INPUT_DEVICE` | *(auto-detect pulse)* | sounddevice input index |
+
+## Conversation Flow
+
+```
+idle  →  listening (wake word heard)
+      →  thinking  (LLM processing)
+      →  speaking  (TTS playback + mouth animation)
+      →  idle
+```
+
+Each phase change updates `data/demo_state.json`, which the PyGame UI picks up within one frame (~16 ms at 60 fps).
+
+## Supported Commands
+
+- **Weather** — *「今天天氣」、「明天台北天氣」、「後天東京天氣」* (up to 7 days, global cities via Open-Meteo)
+- **General Q&A** — anything else is forwarded to GPT-4o-mini
+- **Switch display** — *「切換相框」* toggles between bunny UI and photoframe
+
+## Configuration
+
+Edit `config.yaml` to adjust display settings:
+
+```yaml
+display:
+  width: 1080
+  height: 1920
+  fullscreen: true
+
+assets:
+  face_radius: 200
+  blink_interval: 4.0
+  # colors per phase: idle / listening / thinking / speaking
+```
