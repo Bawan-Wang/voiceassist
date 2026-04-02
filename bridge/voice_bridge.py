@@ -34,7 +34,7 @@ import sounddevice as sd
 import webrtcvad
 from openai import OpenAI
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(__file__).parent.parent  # repo root (voiceassist/)
 STATE_PATH = BASE_DIR / "data" / "demo_state.json"
 DEFAULT_WAKE = "兔兔助理"
 DEFAULT_PLAYBACK = "plughw:2,0"
