@@ -236,14 +236,14 @@ def open_bunny_ui() -> str:
         _kill_pidfile(BUNNY_PID)
         _kill_all("run_photoframe.sh")
         _kill_all("/home/jh-pi/workspace/photoframe/main.py")
-        _kill_all("python assistant_ui.py")
+        _kill_all("python ui/assistant_ui.py")
         time.sleep(0.2)
         subprocess.run(["bash", "-lc", BUNNY_CMD], check=False)
         time.sleep(0.6)
 
         # enforce singleton
-        if _count("python assistant_ui.py") > 1:
-            _kill_all("python assistant_ui.py")
+        if _count("python ui/assistant_ui.py") > 1:
+            _kill_all("python ui/assistant_ui.py")
             subprocess.run(["bash", "-lc", BUNNY_CMD], check=False)
 
         return "好的，已切回兔兔助理畫面。"
