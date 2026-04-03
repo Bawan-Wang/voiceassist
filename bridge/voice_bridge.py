@@ -25,8 +25,9 @@ import sys
 import tempfile
 import time
 import wave
+import difflib
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Deque, Optional
 
@@ -53,7 +54,11 @@ class BridgeConfig:
     padding_ms: int = 600
     input_device: Optional[int] = None
     playback_device: str = DEFAULT_PLAYBACK
-    wake_variants: tuple[str, ...] = ("兔兔助理", "兔兔助手", "兔兔兔", "兔兔", "bunny assistant", "bunny helper", "zero")
+    wake_variants: tuple[str, ...] = (
+        "兔兔助理", "兔兔助手", "兔兔兔", "兔兔", "bunny assistant", "bunny helper", "zero",
+        # 常見誤辨容錯
+        "圖圖助理", "嘟嘟助理", "處處助理", "兔兔處理", "兔兔注意", "杜兔助理", "嘟兔助理", "圖兔助理",
+    )
     voice: str = DEFAULT_VOICE
 
 
@@ -65,6 +70,8 @@ class VoiceBridge:
         self.frame_bytes = int(cfg.sample_rate * cfg.frame_ms / 1000) * 2  # 16-bit mono
         self.padding_frames = cfg.padding_ms // cfg.frame_ms
         self._running = True
+        self._pending_wake_until: Optional[datetime] = None
+        self._last_auto_command_ts = 0.0
 
     def run(self) -> None:
         signal.signal(signal.SIGINT, self._handle_stop)
@@ -87,26 +94,34 @@ class VoiceBridge:
                 update_state("idle")
                 continue
 
-            lower = transcript.lower()
-            matched = None
-            for phrase in self.cfg.wake_variants:
-                if phrase in transcript or phrase.lower() in lower:
-                    matched = phrase
-                    break
-            if not matched:
-                print(f"[voice_bridge] Ignored (no wake word): {transcript}")
-                update_state("idle")
-                continue
+            matched = self._match_wake_phrase(transcript)
 
-            command = transcript.split(matched, 1)[1]
-            command = command.lstrip(TRIM_CHARS)
-            command = command.strip()
-            if not command:
-                command = transcript.replace(matched, '', 1).strip()
-            if not command:
-                print("[voice_bridge] Wake word heard but command empty")
-                update_state("listening", user_text="請再說一次問題", assistant_text="")
-                continue
+            # Support two-step wake: say wake word first, then command shortly after.
+            now = datetime.now(timezone.utc)
+            if matched:
+                command = transcript.split(matched, 1)[1] if matched in transcript else transcript
+                command = command.lstrip(TRIM_CHARS).strip()
+                if not command:
+                    command = transcript.replace(matched, '', 1).strip()
+                if not command:
+                    self._pending_wake_until = now + timedelta(seconds=1.2)
+                    print("[voice_bridge] Wake word heard; waiting for next sentence as command")
+                    update_state("listening", user_text="請說指令", assistant_text="")
+                    continue
+            else:
+                if self._pending_wake_until and now <= self._pending_wake_until:
+                    command = transcript.strip()
+                    self._pending_wake_until = None
+                    print("[voice_bridge] Using follow-up sentence as command")
+                else:
+                    self._pending_wake_until = None
+                    if self._should_route_without_wake(transcript):
+                        command = transcript.strip()
+                        print("[voice_bridge] Auto-route (no explicit wake word)")
+                    else:
+                        print(f"[voice_bridge] Ignored (no wake word): {transcript}")
+                        update_state("idle")
+                        continue
             print(f"[voice_bridge] Command: {command}")
             update_state("thinking", user_text=command, assistant_text="正在思考回覆…")
 
@@ -121,6 +136,65 @@ class VoiceBridge:
 
     def _handle_stop(self, *_: object) -> None:
         self._running = False
+
+    def _match_wake_phrase(self, transcript: str) -> Optional[str]:
+        lower = transcript.lower()
+
+        # 1) Exact/contains matching first
+        for phrase in self.cfg.wake_variants:
+            if phrase in transcript or phrase.lower() in lower:
+                return phrase
+
+        # 2) Token-combo fallback: loose matching for variants like "突突助理/處處住裡"
+        compact = ''.join(ch for ch in transcript if ch.strip())
+        rabbit_tokens = ("兔", "圖", "嘟", "突", "處", "臭", "杜", "tu", "tutu")
+        helper_tokens = ("助理", "助手", "處理", "住裡", "注意", "zhuli", "zhu li")
+        if any(t in compact.lower() for t in rabbit_tokens) and any(t in compact.lower() for t in helper_tokens):
+            return "<token-combo-wake>"
+
+        # 3) Fuzzy match for short Chinese misrecognitions (e.g., 圖圖助理/嘟嘟助理/處處助理)
+        for phrase in self.cfg.wake_variants:
+            p = ''.join(ch for ch in phrase if ch.strip())
+            if len(p) < 3:
+                continue
+            for size in (max(3, len(p)-1), len(p), len(p)+1):
+                if size <= 0 or len(compact) < size:
+                    continue
+                for i in range(0, len(compact) - size + 1):
+                    chunk = compact[i:i+size]
+                    ratio = difflib.SequenceMatcher(a=p, b=chunk).ratio()
+                    if ratio >= 0.70:
+                        return chunk
+        return None
+
+    def _should_route_without_wake(self, transcript: str) -> bool:
+        """Semi-wake mode: route commands even without explicit wake word.
+        Guard rails reduce accidental triggers."""
+        t = transcript.strip()
+        if not t:
+            return False
+
+        now_ts = time.time()
+        # Cooldown to avoid rapid accidental fire
+        if now_ts - self._last_auto_command_ts < 2.0:
+            return False
+
+        # If sentence looks command-like, always route
+        lower = t.lower()
+        command_tokens = (
+            "幫我", "請", "可以", "能不能", "打開", "開啟", "切回", "關閉", "查", "查詢", "天氣", "多少", "怎麼", "為什麼",
+            "help", "open", "close", "switch", "weather", "what", "how"
+        )
+        if any(tok in t for tok in command_tokens) or any(tok in lower for tok in command_tokens):
+            self._last_auto_command_ts = now_ts
+            return True
+
+        # Fallback: medium-length spoken phrase (reduce noise)
+        if len(t) >= 8:
+            self._last_auto_command_ts = now_ts
+            return True
+
+        return False
 
     def _capture_utterance(self) -> bytes:
         """Stream microphone audio until VAD thinks the utterance ended."""
