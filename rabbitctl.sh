@@ -53,7 +53,7 @@ start() {
   kill_all
   cd "$BASE_DIR"
 
-  OPENAI_API_KEY="$OPENAI_API_KEY_VALUE" nohup "$PY" -m uvicorn api.app:app --host 127.0.0.1 --port 8000 --log-level warning >/tmp/assistant_bridge.log 2>&1 &
+  OPENAI_API_KEY="$OPENAI_API_KEY_VALUE" ZERO_USE_OPENCLAW_AGENT=1 nohup "$PY" -m uvicorn api.app:app --host 127.0.0.1 --port 8000 --log-level warning >/tmp/assistant_bridge.log 2>&1 &
   DISPLAY=:0 nohup "$PY" ui/assistant_ui.py "$BASE_DIR/config.yaml" >/tmp/bunny_ui.log 2>&1 &
   OPENAI_API_KEY="$OPENAI_API_KEY_VALUE" nohup "$PY" -u bridge/voice_bridge.py --input-device "$INPUT_DEVICE" --playback-device "$PLAYBACK" --wake "$WAKE" --voice "$VOICE" >/tmp/voice_bridge.log 2>&1 &
 
