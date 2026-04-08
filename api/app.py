@@ -322,7 +322,16 @@ def zero_assistant(req: AssistRequest):
                 "--to", "8765443076", "--message", text,
                 "--timeout", str(cli_timeout), "--json",
             ]
-            out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT, timeout=agent_timeout)
+            # stderr must be separated from stdout; openclaw prints gateway
+            # warning/fallback messages to stderr which corrupt the JSON on stdout.
+            proc = subprocess.run(
+                cmd, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=agent_timeout,
+            )
+            out = proc.stdout.strip()
+            if not out:
+                raise RuntimeError(f"openclaw empty stdout; stderr={proc.stderr[:200]}")
             data = _json.loads(out)
             reply = _extract_text(data)
             if reply:
