@@ -278,6 +278,16 @@ def zero_assistant(req: AssistRequest):
         return AssistResponse(reply_text=natural, meta={"source": "weather+rewrite", "location": location, "day": day})
 
     # LLM path: default to fast local OpenAI; optionally route via OpenClaw agent when enabled
+    # Detect search/browse intent to allow a longer timeout
+    SEARCH_TOKENS = (
+        "查", "搜尋", "搜索", "找", "查詢", "查一下", "幫我查", "最新", "新聞",
+        "網路上", "網頁", "資料", "search", "look up", "find", "browse",
+    )
+    is_search = any(tok in text for tok in SEARCH_TOKENS)
+    agent_timeout = 90 if is_search else 35
+    # For openclaw CLI --timeout, give 5s less than subprocess timeout so it can clean up
+    cli_timeout = agent_timeout - 5
+
     if USE_OPENCLAW_AGENT:
         try:
             import json as _json
@@ -307,12 +317,23 @@ def zero_assistant(req: AssistRequest):
                             return got
                 return ""
 
-            cmd = ["openclaw", "agent", "--channel", "telegram", "--to", "8765443076", "--message", text, "--json"]
-            out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT, timeout=35)
+            cmd = [
+                "openclaw", "agent", "--channel", "telegram",
+                "--to", "8765443076", "--message", text,
+                "--timeout", str(cli_timeout), "--json",
+            ]
+            out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT, timeout=agent_timeout)
             data = _json.loads(out)
             reply = _extract_text(data)
             if reply:
-                return AssistResponse(reply_text=reply, meta={"source": "openclaw-agent"})
+                return AssistResponse(reply_text=reply, meta={"source": "openclaw-agent", "search": is_search})
+        except subprocess.TimeoutExpired:
+            if is_search:
+                return AssistResponse(
+                    reply_text="抱歉，這個問題我查比較久，請你等一下再問我一次。",
+                    meta={"source": "openclaw-agent-timeout", "search": True},
+                )
+            # Non-search timeout: fall through to OpenAI fallback
         except Exception:
             pass
 

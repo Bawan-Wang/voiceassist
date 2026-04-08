@@ -62,6 +62,17 @@ class BridgeConfig:
     voice: str = DEFAULT_VOICE
 
 
+_SEARCH_TOKENS = (
+    "查", "搜尋", "搜索", "找", "查詢", "查一下", "幫我查", "最新", "新聞",
+    "網路上", "網頁", "資料", "search", "look up", "find", "browse",
+)
+
+
+def is_search_intent(text: str) -> bool:
+    """Return True if the command looks like a search/browse request."""
+    return any(tok in text for tok in _SEARCH_TOKENS)
+
+
 class VoiceBridge:
     def __init__(self, cfg: BridgeConfig, client: OpenAI) -> None:
         self.cfg = cfg
@@ -123,9 +134,17 @@ class VoiceBridge:
                         update_state("idle")
                         continue
             print(f"[voice_bridge] Command: {command}")
-            update_state("thinking", user_text=command, assistant_text="正在思考回覆…")
 
-            reply = self.generate_reply(command)
+            searching = is_search_intent(command)
+            if searching:
+                hint = "好，我幫你查一下，請稍等。"
+                print(f"[voice_bridge] Search intent detected, speaking hint first")
+                update_state("thinking", user_text=command, assistant_text=hint)
+                self.speak(hint)
+            else:
+                update_state("thinking", user_text=command, assistant_text="正在思考回覆…")
+
+            reply = self.generate_reply(command, search=searching)
             if not reply:
                 update_state("idle", assistant_text="抱歉，沒有聽清楚。")
                 continue
@@ -251,13 +270,15 @@ class VoiceBridge:
             print(f"[voice_bridge] STT error: {exc}")
             return ""
 
-    def generate_reply(self, prompt: str) -> str:
+    def generate_reply(self, prompt: str, search: bool = False) -> str:
         """Forward prompt to local Zero API (assistant_bridge) and return reply_text.
-        Falls back to empty string on error."""
+        Falls back to empty string on error.
+        search=True gives a longer HTTP timeout for browse/lookup requests."""
         import requests
         url = "http://127.0.0.1:8000/zero-assistant"
+        http_timeout = 120 if search else 45
         try:
-            resp = requests.post(url, json={"text": prompt}, timeout=45)
+            resp = requests.post(url, json={"text": prompt}, timeout=http_timeout)
             resp.raise_for_status()
             data = resp.json()
             reply = data.get("reply_text", "")
