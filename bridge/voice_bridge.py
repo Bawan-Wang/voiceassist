@@ -64,7 +64,7 @@ class BridgeConfig:
 
 _SEARCH_TOKENS = (
     "查", "搜尋", "搜索", "找", "查詢", "查一下", "幫我查", "最新", "新聞",
-    "網路上", "網頁", "資料", "search", "look up", "find", "browse",
+    "網路上", "網頁", "資料", "天氣", "weather", "search", "look up", "find", "browse",
 )
 
 

@@ -1,0 +1,50 @@
+[
+  {
+    "id": "weather_kaohsiung",
+    "input": "高雄今天天氣如何",
+    "expected_source": "openclaw-agent",
+    "expected_search": true,
+    "description": "Weather query for non-Taipei city should go to openclaw-agent"
+  },
+  {
+    "id": "weather_generic",
+    "input": "今天天氣怎麼樣",
+    "expected_source": "openclaw-agent",
+    "expected_search": true,
+    "description": "Generic weather query should go to openclaw-agent"
+  },
+  {
+    "id": "search_news",
+    "input": "幫我查最新AI新聞",
+    "expected_source": "openclaw-agent",
+    "expected_search": true,
+    "description": "Search query should go to openclaw-agent with extended timeout"
+  },
+  {
+    "id": "general_qa",
+    "input": "你好",
+    "expected_source": "openclaw-agent",
+    "expected_search": false,
+    "description": "General Q&A should go to openclaw-agent with normal timeout"
+  },
+  {
+    "id": "open_photoframe",
+    "input": "打開相框",
+    "expected_source": "local-command",
+    "expected_action": "open_photoframe",
+    "description": "Photoframe command should be handled locally"
+  },
+  {
+    "id": "open_bunny",
+    "input": "切回兔兔",
+    "expected_source": "local-command",
+    "expected_action": "open_bunny",
+    "description": "Bunny UI command should be handled locally"
+  },
+  {
+    "id": "empty_input",
+    "input": "",
+    "expected_status": 400,
+    "description": "Empty input should return HTTP 400"
+  }
+]
