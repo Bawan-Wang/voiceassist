@@ -1,33 +1,30 @@
 #!/usr/bin/env python3
-"""Audio bridge that lets Zero listen + speak via OpenAI cloud APIs.
+"""Audio bridge that lets Zero listen + speak with a hybrid local/cloud pipeline.
 
 Workflow:
 1. Continuously listens to the USB speakerphone microphone.
-2. Uses WebRTC VAD to segment utterances.
-3. Runs OpenAI Whisper (gpt-4o-transcribe) to get text.
+2. Uses Silero VAD (fallback: WebRTC VAD) to segment utterances.
+3. Runs local Sherpa-ONNX STT to get text.
 4. Requires the wake phrase "兔兔助理" ("Bunny assistant") before acting.
 5. Sends the command to an LLM (gpt-4o-mini) to craft a short reply.
-6. Uses OpenAI TTS (gpt-4o-mini-tts) to speak with a female voice.
+6. Uses local Piper TTS to synthesize speech sentence-by-sentence.
 7. Continuously updates data/demo_state.json so the PyGame bunny reacts.
 
-Set OPENAI_API_KEY in your environment before running this script.
+Set OPENAI_API_KEY in your environment before running this script for General Q&A.
 """
 from __future__ import annotations
 
 import argparse
 import collections
-import io
 import json
 import os
 import queue
 import signal
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import urllib.request
-import wave
 import difflib
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
@@ -40,6 +37,11 @@ import sounddevice as sd
 import webrtcvad
 from openai import OpenAI
 
+try:
+    from bridge.providers import PiperTextToSpeechProvider, SherpaOnnxSpeechToTextProvider
+except ModuleNotFoundError:
+    from providers import PiperTextToSpeechProvider, SherpaOnnxSpeechToTextProvider
+
 BASE_DIR = Path(__file__).parent.parent  # repo root (voiceassist/)
 STATE_PATH = BASE_DIR / "data" / "demo_state.json"
 SILERO_MODEL_PATH = BASE_DIR / "models" / "silero_vad.onnx"
@@ -48,14 +50,14 @@ SILERO_MODEL_URL = (
 )
 DEFAULT_WAKE = "兔兔助理"
 DEFAULT_PLAYBACK = "plughw:2,0"
-# STT_MODEL = "gpt-4o-transcribe"
-STT_MODEL = "gpt-4o-mini-transcribe"
 LLM_MODEL = "gpt-4o-mini"
-TTS_MODEL = "gpt-4o-mini-tts"
-DEFAULT_VOICE = "verse"  # female-ish voice
 TRIM_CHARS = " ，、。!?~'\""
 SENTENCE_ENDINGS = "，,。！？!?；;：:\n"
 STREAM_CHUNK_CHARS = 24
+LLM_SYSTEM_PROMPT = (
+    "你是兔兔助理，一個友善的繁體中文語音助理。"
+    "請用簡短的中文回答，不超過 30 個字，不使用 Markdown。"
+)
 
 
 @dataclass
@@ -70,7 +72,6 @@ class BridgeConfig:
         # 常見誤辨容錯
         "圖圖助理", "嘟嘟助理", "處處助理", "兔兔處理", "兔兔注意", "杜兔助理", "嘟兔助理", "圖兔助理",
     )
-    voice: str = DEFAULT_VOICE
 
 
 _SEARCH_TOKENS = (
@@ -119,6 +120,8 @@ class VoiceBridge:
     def __init__(self, cfg: BridgeConfig, client: OpenAI) -> None:
         self.cfg = cfg
         self.client = client
+        self.stt_provider = SherpaOnnxSpeechToTextProvider(sample_rate=cfg.sample_rate)
+        self.tts_provider = PiperTextToSpeechProvider()
         self.webrtc_vad = webrtcvad.Vad(2)
         self.frame_bytes = int(cfg.sample_rate * cfg.frame_ms / 1000) * 2  # 16-bit mono
         self.padding_frames = cfg.padding_ms // cfg.frame_ms
@@ -356,16 +359,8 @@ class VoiceBridge:
         return detected_voice
 
     def transcribe(self, audio_bytes: bytes) -> str:
-        wav_bytes = self._pcm_to_wav(audio_bytes)
-        buf = io.BytesIO(wav_bytes)
-        buf.name = "clip.wav"
         try:
-            resp = self.client.audio.transcriptions.create(
-                model=STT_MODEL,
-                file=buf,
-                response_format="text",
-            )
-            text = str(resp).strip()
+            text = self.stt_provider.transcribe(audio_bytes)
             print(f"[voice_bridge] STT: {text}")
             return text
         except Exception as exc:  # pylint: disable=broad-except
@@ -403,10 +398,7 @@ class VoiceBridge:
                 messages=[
                     {
                         "role": "system",
-                        "content": (
-                            "你是兔兔助理，一個友善的繁體中文語音助理。"
-                            "請用簡短的中文回答，不超過 30 個字，不使用 Markdown。"
-                        ),
+                        "content": LLM_SYSTEM_PROMPT,
                     },
                     {"role": "user", "content": prompt},
                 ],
@@ -434,10 +426,7 @@ class VoiceBridge:
                     messages=[
                         {
                             "role": "system",
-                            "content": (
-                                "你是兔兔助理，一個友善的繁體中文語音助理。"
-                                "請用簡短的中文回答，不超過 30 個字，不使用 Markdown。"
-                            ),
+                            "content": LLM_SYSTEM_PROMPT,
                         },
                         {"role": "user", "content": prompt},
                     ],
@@ -467,9 +456,9 @@ class VoiceBridge:
                 if sentence is None:
                     audio_queue.put(None)
                     return
-                audio_path = self._synthesize_mp3(sentence)
+                audio_path = self.tts_provider.synthesize_to_file(sentence)
                 if audio_path:
-                    audio_queue.put((sentence, audio_path))
+                    audio_queue.put((sentence, str(audio_path)))
 
         producer = threading.Thread(target=produce_sentences, daemon=True)
         synthesizer = threading.Thread(target=synthesize_sentences, daemon=True)
@@ -521,23 +510,11 @@ class VoiceBridge:
     def speak(self, text: str) -> None:
         print(f"[voice_bridge] Speaking: {text[:60]}{'...' if len(text)>60 else ''}")
         try:
-            tmp_path = self._synthesize_mp3(text)
-            if not tmp_path:
-                return
-            self._play_audio_file(tmp_path)
-            Path(tmp_path).unlink(missing_ok=True)
+            audio_path = self.tts_provider.synthesize_to_file(text)
+            self._play_audio_file(str(audio_path))
+            Path(audio_path).unlink(missing_ok=True)
         except Exception as exc:  # pylint: disable=broad-except
             print(f"[voice_bridge] TTS error: {exc}")
-
-    def _synthesize_mp3(self, text: str) -> Optional[str]:
-        with self.client.audio.speech.with_streaming_response.create(
-            model=TTS_MODEL,
-            voice=self.cfg.voice,
-            input=text,
-        ) as response:
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
-                response.stream_to_file(tmp.name)
-                return tmp.name
 
     def _play_audio_file(self, file_path: str) -> None:
         subprocess.run(
@@ -546,15 +523,6 @@ class VoiceBridge:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-
-    def _pcm_to_wav(self, audio_bytes: bytes) -> bytes:
-        buf = io.BytesIO()
-        with wave.open(buf, "wb") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(self.cfg.sample_rate)
-            wf.writeframes(audio_bytes)
-        return buf.getvalue()
 
 
 def update_state(phase: str, *, user_text: Optional[str] = None, assistant_text: Optional[str] = None) -> None:
@@ -583,9 +551,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--playback-device",
         default=DEFAULT_PLAYBACK,
-        help=f"ALSA device string for aplay playback (default: {DEFAULT_PLAYBACK})",
+        help=f"ALSA device string for local playback (default: {DEFAULT_PLAYBACK})",
     )
-    parser.add_argument("--voice", default=DEFAULT_VOICE, help="OpenAI TTS voice name (default: verse)")
     parser.add_argument("--wake", default=DEFAULT_WAKE, help="Wake phrase to listen for (default: '兔兔助理')")
     return parser
 
@@ -600,7 +567,6 @@ def main() -> None:
     cfg = BridgeConfig(
         input_device=args.input_device,
         playback_device=args.playback_device,
-        voice=args.voice,
     )
     if args.wake:
         cfg.wake_variants = tuple(dict.fromkeys((args.wake, *cfg.wake_variants)))

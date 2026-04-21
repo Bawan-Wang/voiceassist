@@ -8,7 +8,7 @@ A Raspberry Pi voice assistant with an animated bunny face UI. Speak the wake wo
 Microphone
     │
     ▼
-bridge/voice_bridge.py   ← Silero VAD → STT (OpenAI) → wake word detection
+bridge/voice_bridge.py   ← Silero VAD → STT (Sherpa-ONNX local) → wake word detection
     │
   ├─ search / weather / browse ── POST /zero-assistant
   │                                 ▼
@@ -21,7 +21,7 @@ bridge/voice_bridge.py   ← Silero VAD → STT (OpenAI) → wake word detection
 ui/assistant_ui.py (PyGame)  ← polls JSON → animates face + text
     │
     ▼
-Speaker (ffplay ← streaming TTS via OpenAI)
+Speaker (ffplay ← streaming TTS via Piper local)
 ```
 
 | Component | File | Role |
@@ -52,8 +52,9 @@ Set your OpenAI API key in `~/.bashrc`:
 export OPENAI_API_KEY="sk-..."
 ```
 
-On first run, `voiceassist` automatically downloads the `Silero VAD` model into
-`models/`. The model file is **not** committed to git.
+On first run, `voiceassist` automatically downloads local model assets into
+`models/` (`Silero VAD`, `Sherpa-ONNX`, and `Piper`). These files are **not**
+committed to git.
 
 ## Usage
 
@@ -109,10 +110,10 @@ Each phase change updates `data/demo_state.json`, which the PyGame UI picks up w
 ## Voice Pipeline
 
 - **VAD**: `Silero VAD` (auto-downloaded on first run), fallback to `WebRTC VAD` if unavailable
-- **STT**: `gpt-4o-mini-transcribe`
+- **STT**: local `Sherpa-ONNX` (`sense_voice` int8 model, auto-downloaded on first run)
 - **Search path**: search intent → speak quick hint → `/zero-assistant` → OpenClaw Agent
 - **General Q&A path**: direct `GPT-4o-mini` streaming response
-- **TTS**: sentence-chunked streaming TTS; audio is synthesized and played sentence-by-sentence via `ffplay`
+- **TTS**: local `Piper TTS`; audio is synthesized and played sentence-by-sentence via `ffplay`
 
 ## Configuration
 

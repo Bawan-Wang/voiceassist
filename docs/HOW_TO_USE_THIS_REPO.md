@@ -158,5 +158,5 @@ A: 不會。`conftest.py` 已經把 `subprocess.run` 和 `OpenAI` 都 mock 掉�
 **Q: AI 說「測試 pass」就一定沒問題嗎？**  
 A: 測試只驗證已定義的行為。新功能的邊界情況還是要你實際說話測試一次。
 
-**Q: `Silero VAD` 模型是不是要放進 repo？**  
-A: 不用。現在第一次執行 `voice_bridge.py` 會自動下載到 `models/silero_vad.onnx`，`models/` 已被 gitignore。
+**Q: 本地模型是不是要放進 repo？**  
+A: 不用。現在第一次執行 `voice_bridge.py` 會自動下載 `Silero VAD`、`Sherpa-ONNX`、`Piper` 模型到 `models/`，`models/` 已被 gitignore。

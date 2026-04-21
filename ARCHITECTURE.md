@@ -9,11 +9,11 @@
 bridge/voice_bridge.py
   - Captures audio via sounddevice (PipeWire/pulse)
   - Silero VAD segments utterances (falls back to WebRTC VAD)
-  - OpenAI Whisper STT (gpt-4o-mini-transcribe)
+  - Local Sherpa-ONNX STT (sense_voice)
   - Wake word matching (3-tier: exact → token-combo → fuzzy)
   - Detects search intent → speaks "我幫你查一下" before waiting
   - General Q&A → direct GPT-4o-mini streaming response
-  - Sentence-chunked TTS synthesis and playback via ffplay
+  - Sentence-chunked local Piper TTS synthesis and playback via ffplay
      │
      │  POST /zero-assistant  { "text": "..." }  (search / weather only)
      ▼
@@ -30,9 +30,9 @@ api/app.py  (FastAPI, 127.0.0.1:8000)
      │                                                           polls JSON ~60fps
      ▼
 bridge/voice_bridge.py  (receives reply_text)
-  - Search path: OpenAI TTS (gpt-4o-mini-tts)
-  - General Q&A path: sentence-chunked streaming TTS
-  - Plays MP3 via ffplay → Speaker
+  - Search path: local Piper TTS
+  - General Q&A path: sentence-chunked local Piper TTS
+  - Plays WAV via ffplay → Speaker
 ```
 
 ## Component Responsibilities
@@ -75,6 +75,6 @@ Phases: `idle` → `listening` → `thinking` → `speaking` → `idle`
 
 ## Runtime Notes
 
-- `Silero VAD` model is downloaded automatically on first run to `models/silero_vad.onnx`
+- `Silero VAD`, `Sherpa-ONNX`, and `Piper` model files are downloaded automatically on first run to `models/`
 - `models/` is intentionally gitignored; runtime assets stay local
 - General Q&A playback starts sentence-by-sentence rather than waiting for the full reply

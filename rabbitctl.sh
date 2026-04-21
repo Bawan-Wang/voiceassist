@@ -3,7 +3,6 @@ set -euo pipefail
 
 BASE_DIR="/home/jh-pi/.openclaw/workspace/voiceassist"
 PY="$BASE_DIR/.venv/bin/python"
-VOICE="${RABBIT_VOICE:-shimmer}"
 WAKE="${RABBIT_WAKE:-兔兔助理}"
 PLAYBACK="${RABBIT_PLAYBACK:-plughw:2,0}"
 INPUT_DEVICE="${RABBIT_INPUT_DEVICE:-}"
@@ -55,7 +54,7 @@ start() {
 
   OPENAI_API_KEY="$OPENAI_API_KEY_VALUE" ZERO_USE_OPENCLAW_AGENT=1 nohup "$PY" -m uvicorn api.app:app --host 127.0.0.1 --port 8000 --log-level warning >/tmp/assistant_bridge.log 2>&1 &
   DISPLAY=:0 nohup "$PY" ui/assistant_ui.py "$BASE_DIR/config.yaml" >/tmp/bunny_ui.log 2>&1 &
-  OPENAI_API_KEY="$OPENAI_API_KEY_VALUE" nohup "$PY" -u bridge/voice_bridge.py --input-device "$INPUT_DEVICE" --playback-device "$PLAYBACK" --wake "$WAKE" --voice "$VOICE" >/tmp/voice_bridge.log 2>&1 &
+  OPENAI_API_KEY="$OPENAI_API_KEY_VALUE" nohup "$PY" -u bridge/voice_bridge.py --input-device "$INPUT_DEVICE" --playback-device "$PLAYBACK" --wake "$WAKE" >/tmp/voice_bridge.log 2>&1 &
 
   sleep 1
   echo "Rabbit started."
@@ -81,7 +80,7 @@ case "$cmd" in
   status) status ;;
   *)
     echo "Usage: $0 {start|stop|restart|status}"
-    echo "Optional env: RABBIT_VOICE, RABBIT_WAKE, RABBIT_PLAYBACK, OPENAI_API_KEY"
+    echo "Optional env: RABBIT_WAKE, RABBIT_PLAYBACK, RABBIT_INPUT_DEVICE, OPENAI_API_KEY"
     exit 1
     ;;
 esac
