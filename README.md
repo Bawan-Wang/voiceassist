@@ -8,25 +8,27 @@ A Raspberry Pi voice assistant with an animated bunny face UI. Speak the wake wo
 Microphone
     │
     ▼
-bridge/voice_bridge.py   ← VAD → STT (Whisper) → wake word detection
+bridge/voice_bridge.py   ← Silero VAD → STT (OpenAI) → wake word detection
     │
-    │  POST /zero-assistant
-    ▼
-api/app.py (FastAPI)     ← LLM (GPT-4o-mini) + weather tool
+  ├─ search / weather / browse ── POST /zero-assistant
+  │                                 ▼
+  │                               api/app.py (FastAPI) ← OpenClaw Agent
+  │
+  └─ general Q&A ───────────────→ OpenAI GPT-4o-mini (direct)
     │
     │  writes data/demo_state.json
     ▼
 ui/assistant_ui.py (PyGame)  ← polls JSON → animates face + text
     │
     ▼
-Speaker (ffplay ← TTS via OpenAI)
+Speaker (ffplay ← streaming TTS via OpenAI)
 ```
 
 | Component | File | Role |
 |---|---|---|
 | Bunny UI | `ui/assistant_ui.py` | PyGame animated face, polls `data/demo_state.json` |
-| Voice Bridge | `bridge/voice_bridge.py` | Mic capture, VAD, STT, wake word, TTS playback |
-| API Backend | `api/app.py` | FastAPI, LLM routing, weather intent parsing |
+| Voice Bridge | `bridge/voice_bridge.py` | Mic capture, Silero VAD, STT, wake word, GPT routing, streaming TTS playback |
+| API Backend | `api/app.py` | FastAPI, local intents, OpenClaw agent routing for search/weather |
 | Control Script | `rabbitctl.sh` | Unified start / stop / restart / status |
 | UI Config | `config.yaml` | Resolution, colors, face dimensions |
 | Shared State | `data/demo_state.json` | Runtime state between bridge and UI (gitignored) |
@@ -41,7 +43,7 @@ sudo apt install portaudio19-dev libportaudio2 ffmpeg
 cd /home/jh-pi/.openclaw/workspace/voiceassist
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 Set your OpenAI API key in `~/.bashrc`:
@@ -49,6 +51,9 @@ Set your OpenAI API key in `~/.bashrc`:
 ```bash
 export OPENAI_API_KEY="sk-..."
 ```
+
+On first run, `voiceassist` automatically downloads the `Silero VAD` model into
+`models/`. The model file is **not** committed to git.
 
 ## Usage
 
@@ -80,7 +85,6 @@ Override defaults via environment variables before running `rabbitctl.sh`:
 | Variable | Default | Description |
 |---|---|---|
 | `RABBIT_WAKE` | `兔兔助理` | Wake phrase |
-| `RABBIT_VOICE` | `shimmer` | OpenAI TTS voice |
 | `RABBIT_PLAYBACK` | `plughw:2,0` | ALSA playback device |
 | `RABBIT_INPUT_DEVICE` | *(auto-detect pulse)* | sounddevice input index |
 
@@ -98,8 +102,17 @@ Each phase change updates `data/demo_state.json`, which the PyGame UI picks up w
 ## Supported Commands
 
 - **Weather** — *「今天天氣」、「明天台北天氣」、「後天東京天氣」* (up to 7 days, global cities via Open-Meteo)
-- **General Q&A** — anything else is forwarded to GPT-4o-mini
-- **Switch display** — *「切換相框」* toggles between bunny UI and photoframe
+- **Search / browse** — *「幫我查」、「最新新聞」、「台北天氣」* routes to OpenClaw Agent via `api/app.py`
+- **General Q&A** — anything else is sent directly to `GPT-4o-mini`
+- **Local display commands** — *「打開相框 / 開啟photoframe」* and *「打開兔兔 / 切回bunny」* are handled locally by `api/app.py`
+
+## Voice Pipeline
+
+- **VAD**: `Silero VAD` (auto-downloaded on first run), fallback to `WebRTC VAD` if unavailable
+- **STT**: `gpt-4o-mini-transcribe`
+- **Search path**: search intent → speak quick hint → `/zero-assistant` → OpenClaw Agent
+- **General Q&A path**: direct `GPT-4o-mini` streaming response
+- **TTS**: sentence-chunked streaming TTS; audio is synthesized and played sentence-by-sentence via `ffplay`
 
 ## Configuration
 

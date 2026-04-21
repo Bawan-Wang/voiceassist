@@ -8,18 +8,19 @@
      ▼
 bridge/voice_bridge.py
   - Captures audio via sounddevice (PipeWire/pulse)
-  - WebRTC VAD segments utterances
+  - Silero VAD segments utterances (falls back to WebRTC VAD)
   - OpenAI Whisper STT (gpt-4o-mini-transcribe)
   - Wake word matching (3-tier: exact → token-combo → fuzzy)
   - Detects search intent → speaks "我幫你查一下" before waiting
+  - General Q&A → direct GPT-4o-mini streaming response
+  - Sentence-chunked TTS synthesis and playback via ffplay
      │
-     │  POST /zero-assistant  { "text": "..." }
+     │  POST /zero-assistant  { "text": "..." }  (search / weather only)
      ▼
 api/app.py  (FastAPI, 127.0.0.1:8000)
   - Local command intents first (open photoframe, open bunny UI)
   - Search/weather/browse → openclaw agent (timeout 90s)
-  - General Q&A → openclaw agent (timeout 35s)
-  - Fallback → OpenAI GPT-4o-mini (if openclaw fails)
+  - General Q&A is no longer routed here by the voice bridge
   - Returns { "reply_text": "...", "meta": { "source": "..." } }
      │
      │  writes data/demo_state.json  { phase, userText, assistantText }
@@ -29,7 +30,8 @@ api/app.py  (FastAPI, 127.0.0.1:8000)
      │                                                           polls JSON ~60fps
      ▼
 bridge/voice_bridge.py  (receives reply_text)
-  - OpenAI TTS (gpt-4o-mini-tts, voice: shimmer)
+  - Search path: OpenAI TTS (gpt-4o-mini-tts)
+  - General Q&A path: sentence-chunked streaming TTS
   - Plays MP3 via ffplay → Speaker
 ```
 
@@ -37,8 +39,8 @@ bridge/voice_bridge.py  (receives reply_text)
 
 | Component | File | Key Decisions |
 |-----------|------|---------------|
-| Voice Bridge | `bridge/voice_bridge.py` | Audio I/O, wake word, STT, TTS, search hint |
-| API Backend | `api/app.py` | Intent routing, openclaw subprocess, fallback |
+| Voice Bridge | `bridge/voice_bridge.py` | Audio I/O, Silero/WebRTC VAD, wake word, STT, GPT direct path, streaming TTS |
+| API Backend | `api/app.py` | Intent routing and OpenClaw subprocess for search/weather/local commands |
 | Bunny UI | `ui/assistant_ui.py` | Animation only, reads state from JSON |
 | Control Script | `rabbitctl.sh` | Process management, env var injection |
 | Shared State | `data/demo_state.json` | Bridge ↔ UI IPC (gitignored) |
@@ -57,8 +59,7 @@ text input
            │       → openclaw agent, timeout=90s
            │
            └─ general Q&A
-                   → openclaw agent, timeout=35s
-                   → fallback: OpenAI GPT-4o-mini
+               → OpenAI GPT-4o-mini (direct from `voice_bridge.py`)
 ```
 
 ## Data Flow for State Updates
@@ -71,3 +72,9 @@ voice_bridge calls update_state(phase, userText, assistantText)
 ```
 
 Phases: `idle` → `listening` → `thinking` → `speaking` → `idle`
+
+## Runtime Notes
+
+- `Silero VAD` model is downloaded automatically on first run to `models/silero_vad.onnx`
+- `models/` is intentionally gitignored; runtime assets stay local
+- General Q&A playback starts sentence-by-sentence rather than waiting for the full reply

@@ -66,16 +66,16 @@ AI 會：
 cd /home/jh-pi/.openclaw/workspace/voiceassist
 
 # 安裝測試套件（只需要做一次）
-.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pip install -r requirements-dev.txt
 
 # 跑全部測試
-.venv/bin/pytest tests/ -v
+.venv/bin/python -m pytest tests/ -v
 
 # 只跑 API 測試
-.venv/bin/pytest tests/test_api.py -v
+.venv/bin/python -m pytest tests/test_api.py -v
 
 # 看覆蓋率
-.venv/bin/pytest tests/ --cov=api --cov=bridge --cov-report=term-missing
+.venv/bin/python -m pytest tests/ --cov=api --cov=bridge --cov-report=term-missing
 ```
 
 測試輸出長這樣：
@@ -157,3 +157,6 @@ A: 不會。`conftest.py` 已經把 `subprocess.run` 和 `OpenAI` 都 mock 掉�
 
 **Q: AI 說「測試 pass」就一定沒問題嗎？**  
 A: 測試只驗證已定義的行為。新功能的邊界情況還是要你實際說話測試一次。
+
+**Q: `Silero VAD` 模型是不是要放進 repo？**  
+A: 不用。現在第一次執行 `voice_bridge.py` 會自動下載到 `models/silero_vad.onnx`，`models/` 已被 gitignore。
