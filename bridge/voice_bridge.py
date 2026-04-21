@@ -271,22 +271,50 @@ class VoiceBridge:
             return ""
 
     def generate_reply(self, prompt: str, search: bool = False) -> str:
-        """Forward prompt to local Zero API (assistant_bridge) and return reply_text.
-        Falls back to empty string on error.
-        search=True gives a longer HTTP timeout for browse/lookup requests."""
+        """Route prompt per spec:
+          search=True  → local /zero-assistant API (OpenClaw Agent, timeout 90s)
+          search=False → direct OpenAI GPT-4o-mini call
+        """
+        if search:
+            return self._reply_via_api(prompt)
+        return self._reply_via_gpt4o_mini(prompt)
+
+    def _reply_via_api(self, prompt: str) -> str:
+        """POST to local /zero-assistant (OpenClaw Agent) for search/browse."""
         import requests
         url = "http://127.0.0.1:8000/zero-assistant"
-        http_timeout = 120 if search else 45
         try:
-            resp = requests.post(url, json={"text": prompt}, timeout=http_timeout)
+            resp = requests.post(url, json={"text": prompt}, timeout=90)
             resp.raise_for_status()
-            data = resp.json()
-            reply = data.get("reply_text", "")
-            result = reply.strip() if reply else ""
-            print(f"[voice_bridge] Reply: {result[:80]}{'...' if len(result)>80 else ''}")
+            result = (resp.json().get("reply_text") or "").strip()
+            print(f"[voice_bridge] API reply: {result[:80]}{'...' if len(result)>80 else ''}")
             return result
         except Exception as exc:  # pylint: disable=broad-except
-            print(f"[voice_bridge] Bridge LLM error: {exc}")
+            print(f"[voice_bridge] API error: {exc}")
+            return ""
+
+    def _reply_via_gpt4o_mini(self, prompt: str) -> str:
+        """Call GPT-4o-mini directly for general Q&A."""
+        try:
+            resp = self.client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "你是兔兔助理，一個友善的繁體中文語音助理。"
+                            "請用簡短的中文回答，不超過 30 個字，不使用 Markdown。"
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=120,
+            )
+            result = (resp.choices[0].message.content or "").strip()
+            print(f"[voice_bridge] GPT-4o-mini reply: {result[:80]}{'...' if len(result)>80 else ''}")
+            return result
+        except Exception as exc:  # pylint: disable=broad-except
+            print(f"[voice_bridge] GPT-4o-mini error: {exc}")
             return ""
 
     def speak(self, text: str) -> None:
