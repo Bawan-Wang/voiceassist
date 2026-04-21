@@ -19,6 +19,7 @@ import collections
 import json
 import os
 import queue
+import re
 import signal
 import subprocess
 import sys
@@ -57,6 +58,11 @@ STREAM_CHUNK_CHARS = 24
 LLM_SYSTEM_PROMPT = (
     "你是兔兔助理，一個友善的繁體中文語音助理。"
     "請用簡短的中文回答，不超過 30 個字，不使用 Markdown。"
+)
+SPOKEN_REPLY_PROMPT = (
+    "你要把搜尋結果改寫成適合語音播報的繁體中文。"
+    "規則：只保留重點、1到2句、不要網址、不要 Markdown、不要括號引用、"
+    "不要條列、不要唸出奇怪符號，盡量口語自然。"
 )
 
 
@@ -207,8 +213,9 @@ class VoiceBridge:
                     update_state("idle", assistant_text="抱歉，沒有聽清楚。")
                     continue
 
+                spoken_reply = self._prepare_reply_for_speech(reply, search=True)
                 update_state("speaking", assistant_text=reply)
-                self.speak(reply)
+                self.speak(spoken_reply)
             else:
                 update_state("thinking", user_text=command, assistant_text="正在思考回覆…")
 
@@ -508,6 +515,7 @@ class VoiceBridge:
         return ready, remaining
 
     def speak(self, text: str) -> None:
+        text = self._prepare_reply_for_speech(text, search=False)
         print(f"[voice_bridge] Speaking: {text[:60]}{'...' if len(text)>60 else ''}")
         try:
             audio_path = self.tts_provider.synthesize_to_file(text)
@@ -515,6 +523,67 @@ class VoiceBridge:
             Path(audio_path).unlink(missing_ok=True)
         except Exception as exc:  # pylint: disable=broad-except
             print(f"[voice_bridge] TTS error: {exc}")
+
+    def _prepare_reply_for_speech(self, text: str, search: bool) -> str:
+        cleaned = self._normalize_tts_text(text)
+        if search:
+            rewritten = self._rewrite_search_reply_for_speech(cleaned)
+            if rewritten:
+                return self._normalize_tts_text(rewritten)
+        return cleaned
+
+    def _normalize_tts_text(self, text: str) -> str:
+        text = text.strip()
+        if not text:
+            return text
+
+        text = re.sub(r"```.*?```", " ", text, flags=re.S)
+        text = re.sub(r"`([^`]+)`", r"\1", text)
+        text = re.sub(r"!?\[([^\]]+)\]\(([^)]+)\)", r"\1", text)
+        text = re.sub(r"https?://\S+", "", text)
+        text = re.sub(r"www\.\S+", "", text)
+        text = re.sub(r"\[[0-9 ,;]+\]", "", text)
+        text = re.sub(r"[•●◆■▶►▪◦]+", "，", text)
+        text = re.sub(r"^[#>*\-\s]+", "", text, flags=re.M)
+        text = text.replace("°C", "度")
+        text = text.replace("°", "度")
+        text = re.sub(r"(\d+(?:\.\d+)?)%", r"百分之\1", text)
+        text = text.replace("%", "百分之")
+        text = text.replace("&", "和")
+        text = text.replace("AI", "ＡＩ")
+        text = text.replace("assistant", "助理")
+        text = text.replace("GPS", "ＧＰＳ")
+        text = text.replace("Wi-Fi", "無線網路")
+        text = text.replace("wifi", "無線網路")
+        text = re.sub(r"[_*=~|]+", " ", text)
+        text = re.sub(r"[()（）【】\[\]{}<>]+", " ", text)
+        text = re.sub(r"\b(詳見|詳情見|來源|出處)\b[:：]?\s*$", "", text)
+        text = re.sub(r"^\s*(來源|出處)\s*[:：]?\s*", "", text)
+        text = re.sub(r"\s+", " ", text)
+        text = re.sub(r"\s*([，。！？；：,!?;:])\s*", r"\1", text)
+        text = re.sub(r"([，。！？；：,!?;:]){2,}", r"\1", text)
+        return text.strip(" ，。；：")
+
+    def _rewrite_search_reply_for_speech(self, text: str) -> str:
+        if not text:
+            return text
+        try:
+            resp = self.client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=[
+                    {"role": "system", "content": SPOKEN_REPLY_PROMPT},
+                    {"role": "user", "content": text[:1200]},
+                ],
+                max_tokens=120,
+                timeout=12,
+            )
+            rewritten = (resp.choices[0].message.content or "").strip()
+            if rewritten:
+                print(f"[voice_bridge] Search speech rewrite: {rewritten[:80]}{'...' if len(rewritten)>80 else ''}")
+                return rewritten
+        except Exception as exc:  # pylint: disable=broad-except
+            print(f"[voice_bridge] Search speech rewrite skipped: {exc}")
+        return text
 
     def _play_audio_file(self, file_path: str) -> None:
         subprocess.run(
