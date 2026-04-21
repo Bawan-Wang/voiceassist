@@ -19,11 +19,14 @@ import collections
 import io
 import json
 import os
+import queue
 import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+import urllib.request
 import wave
 import difflib
 from dataclasses import dataclass
@@ -31,12 +34,18 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Deque, Optional
 
+import numpy as np
+import onnxruntime
 import sounddevice as sd
 import webrtcvad
 from openai import OpenAI
 
 BASE_DIR = Path(__file__).parent.parent  # repo root (voiceassist/)
 STATE_PATH = BASE_DIR / "data" / "demo_state.json"
+SILERO_MODEL_PATH = BASE_DIR / "models" / "silero_vad.onnx"
+SILERO_MODEL_URL = (
+    "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx"
+)
 DEFAULT_WAKE = "兔兔助理"
 DEFAULT_PLAYBACK = "plughw:2,0"
 # STT_MODEL = "gpt-4o-transcribe"
@@ -45,6 +54,8 @@ LLM_MODEL = "gpt-4o-mini"
 TTS_MODEL = "gpt-4o-mini-tts"
 DEFAULT_VOICE = "verse"  # female-ish voice
 TRIM_CHARS = " ，、。!?~'\""
+SENTENCE_ENDINGS = "，,。！？!?；;：:\n"
+STREAM_CHUNK_CHARS = 24
 
 
 @dataclass
@@ -73,16 +84,63 @@ def is_search_intent(text: str) -> bool:
     return any(tok in text for tok in _SEARCH_TOKENS)
 
 
+def ensure_silero_model() -> Optional[Path]:
+    """Ensure the Silero VAD model exists locally, downloading it on first use."""
+    if SILERO_MODEL_PATH.exists():
+        return SILERO_MODEL_PATH
+
+    try:
+        SILERO_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = SILERO_MODEL_PATH.with_suffix(".onnx.tmp")
+        print(f"[voice_bridge] Silero model missing; downloading from {SILERO_MODEL_URL}")
+        urllib.request.urlretrieve(SILERO_MODEL_URL, tmp_path)
+        tmp_path.replace(SILERO_MODEL_PATH)
+        print(f"[voice_bridge] Silero model downloaded to {SILERO_MODEL_PATH}")
+        return SILERO_MODEL_PATH
+    except Exception as exc:  # pylint: disable=broad-except
+        print(f"[voice_bridge] Silero model download failed: {exc}")
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except Exception:  # pylint: disable=broad-except
+            pass
+        return None
+
+
+class _SileroVADState:
+    def __init__(self) -> None:
+        self.state = np.zeros((2, 1, 128), dtype=np.float32)
+        self.context = np.zeros((1, 64), dtype=np.float32)
+        self.audio_buffer = bytearray()
+        self.voice_window: Deque[bool] = collections.deque(maxlen=5)
+        self.last_is_voice = False
+
+
 class VoiceBridge:
     def __init__(self, cfg: BridgeConfig, client: OpenAI) -> None:
         self.cfg = cfg
         self.client = client
-        self.vad = webrtcvad.Vad(2)
+        self.webrtc_vad = webrtcvad.Vad(2)
         self.frame_bytes = int(cfg.sample_rate * cfg.frame_ms / 1000) * 2  # 16-bit mono
         self.padding_frames = cfg.padding_ms // cfg.frame_ms
         self._running = True
         self._pending_wake_until: Optional[datetime] = None
         self._last_auto_command_ts = 0.0
+        self._silero_session: Optional[onnxruntime.InferenceSession] = None
+
+        silero_model_path = ensure_silero_model()
+        if silero_model_path is not None and silero_model_path.exists():
+            try:
+                opts = onnxruntime.SessionOptions()
+                opts.inter_op_num_threads = 1
+                opts.intra_op_num_threads = 1
+                self._silero_session = onnxruntime.InferenceSession(
+                    str(silero_model_path),
+                    providers=["CPUExecutionProvider"],
+                    sess_options=opts,
+                )
+                print(f"[voice_bridge] Using Silero VAD: {silero_model_path}")
+            except Exception as exc:  # pylint: disable=broad-except
+                print(f"[voice_bridge] Silero VAD init failed, fallback to WebRTC: {exc}")
 
     def run(self) -> None:
         signal.signal(signal.SIGINT, self._handle_stop)
@@ -141,16 +199,21 @@ class VoiceBridge:
                 print(f"[voice_bridge] Search intent detected, speaking hint first")
                 update_state("thinking", user_text=command, assistant_text=hint)
                 self.speak(hint)
+                reply = self.generate_reply(command, search=True)
+                if not reply:
+                    update_state("idle", assistant_text="抱歉，沒有聽清楚。")
+                    continue
+
+                update_state("speaking", assistant_text=reply)
+                self.speak(reply)
             else:
                 update_state("thinking", user_text=command, assistant_text="正在思考回覆…")
 
-            reply = self.generate_reply(command, search=searching)
-            if not reply:
-                update_state("idle", assistant_text="抱歉，沒有聽清楚。")
-                continue
+                reply = self.stream_reply_and_speak(command)
+                if not reply:
+                    update_state("idle", assistant_text="抱歉，沒有聽清楚。")
+                    continue
 
-            update_state("speaking", assistant_text=reply)
-            self.speak(reply)
             update_state("idle", assistant_text=reply)
 
     def _handle_stop(self, *_: object) -> None:
@@ -221,6 +284,7 @@ class VoiceBridge:
         voiced_frames: list[bytes] = []
         triggered = False
         last_voice = time.time()
+        silero_state = _SileroVADState() if self._silero_session is not None else None
 
         with sd.RawInputStream(blocksize=self.frame_bytes // 2, device=self.cfg.input_device) as stream:
             while self._running:
@@ -228,7 +292,7 @@ class VoiceBridge:
                 if not frame:
                     continue
                 pcm_bytes = bytes(frame)
-                is_speech = self.vad.is_speech(pcm_bytes, self.cfg.sample_rate)
+                is_speech = self._frame_has_speech(pcm_bytes, silero_state)
 
                 if not triggered:
                     ring_buffer.append((pcm_bytes, is_speech))
@@ -252,6 +316,44 @@ class VoiceBridge:
                         ring_buffer.clear()
 
         return b""
+
+    def _frame_has_speech(self, pcm_bytes: bytes, silero_state: Optional[_SileroVADState]) -> bool:
+        if self._silero_session is None or silero_state is None:
+            return self.webrtc_vad.is_speech(pcm_bytes, self.cfg.sample_rate)
+
+        silero_state.audio_buffer.extend(pcm_bytes)
+        detected_voice = silero_state.last_is_voice
+        while len(silero_state.audio_buffer) >= 512 * 2:
+            chunk = bytes(silero_state.audio_buffer[: 512 * 2])
+            del silero_state.audio_buffer[: 512 * 2]
+
+            audio_int16 = np.frombuffer(chunk, dtype=np.int16)
+            audio_float32 = audio_int16.astype(np.float32) / 32768.0
+            audio_input = np.concatenate(
+                [silero_state.context, audio_float32.reshape(1, -1)], axis=1
+            ).astype(np.float32)
+            ort_inputs = {
+                "input": audio_input,
+                "state": silero_state.state,
+                "sr": np.array(16000, dtype=np.int64),
+            }
+            out, state = self._silero_session.run(None, ort_inputs)
+            silero_state.state = state
+            silero_state.context = audio_input[:, -64:]
+            speech_prob = float(out.item())
+
+            if speech_prob >= 0.5:
+                is_voice = True
+            elif speech_prob <= 0.2:
+                is_voice = False
+            else:
+                is_voice = silero_state.last_is_voice
+
+            silero_state.last_is_voice = is_voice
+            silero_state.voice_window.append(is_voice)
+            detected_voice = silero_state.voice_window.count(True) >= 3
+
+        return detected_voice
 
     def transcribe(self, audio_bytes: bytes) -> str:
         wav_bytes = self._pcm_to_wav(audio_bytes)
@@ -317,28 +419,133 @@ class VoiceBridge:
             print(f"[voice_bridge] GPT-4o-mini error: {exc}")
             return ""
 
+    def stream_reply_and_speak(self, prompt: str) -> str:
+        """Stream GPT-4o-mini text, chunk into sentences, synthesize in background, play in order."""
+        sentence_queue: "queue.Queue[Optional[str]]" = queue.Queue()
+        audio_queue: "queue.Queue[Optional[tuple[str, str]]]" = queue.Queue()
+        reply_chunks: list[str] = []
+        reply_lock = threading.Lock()
+
+        def produce_sentences() -> None:
+            buffer = ""
+            try:
+                stream = self.client.chat.completions.create(
+                    model=LLM_MODEL,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "你是兔兔助理，一個友善的繁體中文語音助理。"
+                                "請用簡短的中文回答，不超過 30 個字，不使用 Markdown。"
+                            ),
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    max_tokens=120,
+                    stream=True,
+                )
+                for chunk in stream:
+                    delta = chunk.choices[0].delta.content or ""
+                    if not delta:
+                        continue
+                    with reply_lock:
+                        reply_chunks.append(delta)
+                    buffer += delta
+                    ready, buffer = self._extract_ready_sentences(buffer)
+                    for sentence in ready:
+                        sentence_queue.put(sentence)
+                for sentence in self._extract_ready_sentences(buffer, final=True)[0]:
+                    sentence_queue.put(sentence)
+            except Exception as exc:  # pylint: disable=broad-except
+                print(f"[voice_bridge] Streaming GPT-4o-mini error: {exc}")
+            finally:
+                sentence_queue.put(None)
+
+        def synthesize_sentences() -> None:
+            while True:
+                sentence = sentence_queue.get()
+                if sentence is None:
+                    audio_queue.put(None)
+                    return
+                audio_path = self._synthesize_mp3(sentence)
+                if audio_path:
+                    audio_queue.put((sentence, audio_path))
+
+        producer = threading.Thread(target=produce_sentences, daemon=True)
+        synthesizer = threading.Thread(target=synthesize_sentences, daemon=True)
+        producer.start()
+        synthesizer.start()
+
+        spoken_text = ""
+        while True:
+            item = audio_queue.get()
+            if item is None:
+                break
+            sentence, audio_path = item
+            spoken_text = f"{spoken_text}{sentence}".strip()
+            update_state("speaking", assistant_text=spoken_text)
+            self._play_audio_file(audio_path)
+            Path(audio_path).unlink(missing_ok=True)
+
+        producer.join(timeout=0.5)
+        synthesizer.join(timeout=0.5)
+        full_reply = "".join(reply_chunks).strip()
+        print(f"[voice_bridge] Streaming reply: {full_reply[:80]}{'...' if len(full_reply)>80 else ''}")
+        return full_reply
+
+    def _extract_ready_sentences(self, buffer: str, final: bool = False) -> tuple[list[str], str]:
+        ready: list[str] = []
+        remaining = buffer
+
+        while remaining:
+            split_idx = next((idx for idx, ch in enumerate(remaining) if ch in SENTENCE_ENDINGS), -1)
+            if split_idx >= 0:
+                sentence = remaining[: split_idx + 1].strip()
+                remaining = remaining[split_idx + 1 :]
+                if sentence:
+                    ready.append(sentence)
+                continue
+            if len(remaining.strip()) >= STREAM_CHUNK_CHARS:
+                sentence = remaining[:STREAM_CHUNK_CHARS].strip()
+                remaining = remaining[STREAM_CHUNK_CHARS:]
+                if sentence:
+                    ready.append(sentence)
+                continue
+            break
+
+        if final and remaining.strip():
+            ready.append(remaining.strip())
+            remaining = ""
+        return ready, remaining
+
     def speak(self, text: str) -> None:
         print(f"[voice_bridge] Speaking: {text[:60]}{'...' if len(text)>60 else ''}")
         try:
-            with self.client.audio.speech.with_streaming_response.create(
-                model=TTS_MODEL,
-                voice=self.cfg.voice,
-                input=text,
-            ) as response:
-                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
-                    response.stream_to_file(tmp.name)
-                    tmp_path = tmp.name
-            # TTS 輸出是 MP3，aplay 不支援；改用 ffplay
-            # 系統有 PipeWire，不直接指定 ALSA 硬件設備，讓 PipeWire 自動路由
-            subprocess.run(
-                ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", tmp_path],
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            tmp_path = self._synthesize_mp3(text)
+            if not tmp_path:
+                return
+            self._play_audio_file(tmp_path)
             Path(tmp_path).unlink(missing_ok=True)
         except Exception as exc:  # pylint: disable=broad-except
             print(f"[voice_bridge] TTS error: {exc}")
+
+    def _synthesize_mp3(self, text: str) -> Optional[str]:
+        with self.client.audio.speech.with_streaming_response.create(
+            model=TTS_MODEL,
+            voice=self.cfg.voice,
+            input=text,
+        ) as response:
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+                response.stream_to_file(tmp.name)
+                return tmp.name
+
+    def _play_audio_file(self, file_path: str) -> None:
+        subprocess.run(
+            ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", file_path],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
     def _pcm_to_wav(self, audio_bytes: bytes) -> bytes:
         buf = io.BytesIO()

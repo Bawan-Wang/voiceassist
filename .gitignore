@@ -12,6 +12,9 @@ env/
 # Runtime state
 data/demo_state.json
 
+# Downloaded model assets
+models/
+
 # Misc
 *.log
 .DS_Store

@@ -1,5 +1,7 @@
 pygame>=2.5.2
 PyYAML>=6.0.1
 sounddevice>=0.4.6
+onnxruntime>=1.17.0
+numpy>=1.24.0
 webrtcvad>=2.0.10
 openai>=1.12.0
