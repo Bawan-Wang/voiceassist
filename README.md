@@ -6,31 +6,33 @@ A Raspberry Pi voice assistant with an animated bunny face UI. Speak the wake wo
 
 ```
 Microphone
-    │
-    ▼
+  │
+  ▼
 bridge/voice_bridge.py   ← Silero VAD → STT (Sherpa-ONNX local) → wake word detection
-    │
+  │
   ├─ search / weather / browse ── POST /zero-assistant
   │                                 ▼
-  │                               api/app.py (FastAPI) ← OpenClaw Agent
+  │                               api/app.py (FastAPI) → OpenClaw Agent
   │                                 ▼
-  │                               normalize spoken text → rewrite noisy replies for speech
+  │                               reply_text back to bridge
+  │                                 ▼
+  │                               normalize spoken text → optional spoken rewrite → Piper
   │
-  └─ general Q&A ───────────────→ OpenAI GPT-4o-mini (direct)
-    │
-    │  writes data/demo_state.json
-    ▼
+  └─ general Q&A ───────────────→ OpenAI GPT-4o-mini (direct, streaming in bridge)
+  │
+  │  writes data/demo_state.json
+  ▼
 ui/assistant_ui.py (PyGame)  ← polls JSON → animates face + text
-    │
-    ▼
-Speaker (ffplay ← streaming TTS via Piper local)
+  │
+  ▼
+Speaker (ffplay ← local Piper playback)
 ```
 
 | Component | File | Role |
 |---|---|---|
 | Bunny UI | `ui/assistant_ui.py` | PyGame animated face, polls `data/demo_state.json` |
 | Voice Bridge | `bridge/voice_bridge.py` | Mic capture, Silero VAD, STT, wake word, GPT routing, search-reply speech cleanup, streaming TTS playback |
-| API Backend | `api/app.py` | FastAPI, local intents, OpenClaw agent routing for search/weather |
+| API Backend | `api/app.py` | FastAPI entrypoint for local intents plus OpenClaw/OpenAI routing when `/zero-assistant` is called directly |
 | Control Script | `rabbitctl.sh` | Unified start / stop / restart / status |
 | UI + Voice Config | `config.yaml` | UI settings plus `voiceBridge` runtime config for VAD/STT/TTS/routing/model selection |
 | Shared State | `data/demo_state.json` | Runtime state between bridge and UI (gitignored) |
@@ -104,17 +106,18 @@ Each phase change updates `data/demo_state.json`, which the PyGame UI picks up w
 
 ## Supported Commands
 
-- **Weather** — *「今天天氣」、「明天台北天氣」、「後天東京天氣」* (up to 7 days, global cities via Open-Meteo)
-- **Search / browse** — *「幫我查」、「最新新聞」、「台北天氣」* routes to OpenClaw Agent via `api/app.py`
-- **General Q&A** — anything else is sent directly to `GPT-4o-mini`
-- **Local display commands** — *「打開相框 / 開啟photoframe」* and *「打開兔兔 / 切回bunny」* are handled locally by `api/app.py`
+- **Voice bridge: weather / search / browse** — *「幫我查」、「最新新聞」、「台北天氣」* routes to `api/app.py`, which then calls the OpenClaw Agent
+- **Voice bridge: general Q&A** — anything not classified as search is answered directly by `bridge/voice_bridge.py` via `GPT-4o-mini`
+- **Direct API: local display commands** — *「打開相框 / 開啟photoframe」* and *「打開兔兔 / 切回bunny」* are handled inside `api/app.py`
+- **Current limitation** — because the voice bridge only sends search-like prompts to `/zero-assistant`, those local display commands are currently available through the API path, but not through the default voice-bridge general-Q&A path
 
 ## Voice Pipeline
 
 - **VAD**: `Silero VAD` (auto-downloaded on first run), fallback to `WebRTC VAD` if unavailable
 - **STT**: local `Sherpa-ONNX` (`sense_voice` int8 model, auto-downloaded on first run)
-- **Search path**: search intent → speak quick hint → `/zero-assistant` → OpenClaw Agent → local TTS text normalization → spoken-form rewrite for noisy results → `Piper`
-- **General Q&A path**: direct `GPT-4o-mini` streaming response
+- **Voice-bridge search path**: search intent → speak quick hint → `/zero-assistant` → OpenClaw Agent in `api/app.py` → local TTS text normalization → spoken-form rewrite for noisy results → `Piper`
+- **Voice-bridge general Q&A path**: direct `GPT-4o-mini` streaming response inside `bridge/voice_bridge.py`
+- **Direct API path**: requests sent straight to `/zero-assistant` still hit local command handlers first, then use OpenClaw-first routing when `ZERO_USE_OPENCLAW_AGENT=1`, with OpenAI fallback inside `api/app.py`
 - **TTS**: local `Piper TTS`; search replies are normalized before playback and may be rewritten into a more spoken-friendly Traditional Chinese form before synthesis, while general Q&A is played sentence-by-sentence from the streaming GPT output
 
 ## Configuration

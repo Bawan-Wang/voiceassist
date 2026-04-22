@@ -36,7 +36,7 @@ api/app.py              FastAPI backend — intent routing, LLM calls
 bridge/voice_bridge.py  Mic → VAD → STT → wake word → route → TTS
 ui/assistant_ui.py      PyGame bunny face UI, polls data/demo_state.json
 data/demo_state.json    Runtime shared state (gitignored)
-config.yaml             Display/face config for the UI
+config.yaml             Display config plus `voiceBridge` runtime/provider settings
 rabbitctl.sh            Start / stop / restart / status all services
 tests/                  Pytest harness (see docs/HOW_TO_USE_THIS_REPO.md)
 docs/                   Specs, architecture, tech debt
@@ -46,10 +46,11 @@ docs/                   Specs, architecture, tech debt
 
 ## LLM Routing
 
-- Search / weather / browse intent → local `POST /zero-assistant` in `api/app.py` → OpenClaw Agent (`timeout=90s`)
-- General Q&A → direct **OpenAI GPT-4o-mini** call from `bridge/voice_bridge.py`
+- **Voice bridge path**: search / weather / browse intent → local `POST /zero-assistant` in `api/app.py` → OpenClaw Agent (`timeout=90s`)
+- **Voice bridge path**: general Q&A → direct **OpenAI GPT-4o-mini** call from `bridge/voice_bridge.py`
+- **Direct API path**: `/zero-assistant` still handles local display commands first, then uses OpenClaw-first routing when `ZERO_USE_OPENCLAW_AGENT=1`, with OpenAI fallback for non-search failures
 - Search replies are normalized for TTS, and `bridge/voice_bridge.py` may rewrite noisy search text into a short spoken Traditional Chinese form before `Piper` playback
-- Do not assume `api/app.py` handles general Q&A for the voice bridge unless the code has been changed again
+- Do not assume local commands in `api/app.py` are reachable from the default voice-bridge path; today they are only guaranteed on the direct API path
 
 ---
 
