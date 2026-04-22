@@ -33,7 +33,7 @@ working in this repository. Read this before making any changes.
 
 ```
 api/app.py              FastAPI backend — intent routing, LLM calls
-bridge/voice_bridge.py  Mic → VAD → STT → wake word → POST /zero-assistant → TTS
+bridge/voice_bridge.py  Mic → VAD → STT → wake word → route → TTS
 ui/assistant_ui.py      PyGame bunny face UI, polls data/demo_state.json
 data/demo_state.json    Runtime shared state (gitignored)
 config.yaml             Display/face config for the UI
@@ -46,10 +46,10 @@ docs/                   Specs, architecture, tech debt
 
 ## LLM Routing
 
-- Default path: **openclaw agent** (`openclaw agent --channel telegram --to 8765443076`)
-- Fallback: **OpenAI GPT-4o-mini** (only if openclaw fails or is unavailable)
-- Search/weather/browse intent → `timeout=90s`; general Q&A → `timeout=35s`
-- Controlled by env var `ZERO_USE_OPENCLAW_AGENT` (default `"1"`)
+- Search / weather / browse intent → local `POST /zero-assistant` in `api/app.py` → OpenClaw Agent (`timeout=90s`)
+- General Q&A → direct **OpenAI GPT-4o-mini** call from `bridge/voice_bridge.py`
+- Search replies are normalized for TTS, and `bridge/voice_bridge.py` may rewrite noisy search text into a short spoken Traditional Chinese form before `Piper` playback
+- Do not assume `api/app.py` handles general Q&A for the voice bridge unless the code has been changed again
 
 ---
 

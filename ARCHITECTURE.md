@@ -13,6 +13,7 @@ bridge/voice_bridge.py
   - Wake word matching (3-tier: exact → token-combo → fuzzy)
   - Detects search intent → speaks "我幫你查一下" before waiting
   - General Q&A → direct GPT-4o-mini streaming response
+  - Search replies are normalized for TTS and may be rewritten into a speech-friendly form
   - Sentence-chunked local Piper TTS synthesis and playback via ffplay
      │
      │  POST /zero-assistant  { "text": "..." }  (search / weather only)
@@ -30,7 +31,7 @@ api/app.py  (FastAPI, 127.0.0.1:8000)
      │                                                           polls JSON ~60fps
      ▼
 bridge/voice_bridge.py  (receives reply_text)
-  - Search path: local Piper TTS
+  - Search path: normalize text → optional GPT spoken rewrite → local Piper TTS
   - General Q&A path: sentence-chunked local Piper TTS
   - Plays WAV via ffplay → Speaker
 ```
@@ -39,7 +40,7 @@ bridge/voice_bridge.py  (receives reply_text)
 
 | Component | File | Key Decisions |
 |-----------|------|---------------|
-| Voice Bridge | `bridge/voice_bridge.py` | Audio I/O, Silero/WebRTC VAD, wake word, STT, GPT direct path, streaming TTS |
+| Voice Bridge | `bridge/voice_bridge.py` | Audio I/O, Silero/WebRTC VAD, wake word, STT, GPT direct path, search speech cleanup, streaming TTS |
 | API Backend | `api/app.py` | Intent routing and OpenClaw subprocess for search/weather/local commands |
 | Bunny UI | `ui/assistant_ui.py` | Animation only, reads state from JSON |
 | Control Script | `rabbitctl.sh` | Process management, env var injection |
@@ -62,6 +63,15 @@ text input
                → OpenAI GPT-4o-mini (direct from `voice_bridge.py`)
 ```
 
+Search replies then stay inside `bridge/voice_bridge.py` for a second stage:
+
+```
+reply_text from /zero-assistant
+    → `_normalize_tts_text()` removes URLs, markdown, citations, and symbol noise
+    → `_rewrite_search_reply_for_speech()` asks `GPT-4o-mini` for a short spoken zh-TW version
+    → `PiperTextToSpeechProvider`
+```
+
 ## Data Flow for State Updates
 
 ```
@@ -78,3 +88,4 @@ Phases: `idle` → `listening` → `thinking` → `speaking` → `idle`
 - `Silero VAD`, `Sherpa-ONNX`, and `Piper` model files are downloaded automatically on first run to `models/`
 - `models/` is intentionally gitignored; runtime assets stay local
 - General Q&A playback starts sentence-by-sentence rather than waiting for the full reply
+- Search playback adds a cleanup step before `Piper` so OpenClaw-style search results sound more natural when spoken

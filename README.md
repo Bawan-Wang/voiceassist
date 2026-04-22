@@ -13,6 +13,8 @@ bridge/voice_bridge.py   ← Silero VAD → STT (Sherpa-ONNX local) → wake wor
   ├─ search / weather / browse ── POST /zero-assistant
   │                                 ▼
   │                               api/app.py (FastAPI) ← OpenClaw Agent
+  │                                 ▼
+  │                               normalize spoken text → rewrite noisy replies for speech
   │
   └─ general Q&A ───────────────→ OpenAI GPT-4o-mini (direct)
     │
@@ -27,7 +29,7 @@ Speaker (ffplay ← streaming TTS via Piper local)
 | Component | File | Role |
 |---|---|---|
 | Bunny UI | `ui/assistant_ui.py` | PyGame animated face, polls `data/demo_state.json` |
-| Voice Bridge | `bridge/voice_bridge.py` | Mic capture, Silero VAD, STT, wake word, GPT routing, streaming TTS playback |
+| Voice Bridge | `bridge/voice_bridge.py` | Mic capture, Silero VAD, STT, wake word, GPT routing, search-reply speech cleanup, streaming TTS playback |
 | API Backend | `api/app.py` | FastAPI, local intents, OpenClaw agent routing for search/weather |
 | Control Script | `rabbitctl.sh` | Unified start / stop / restart / status |
 | UI Config | `config.yaml` | Resolution, colors, face dimensions |
@@ -111,9 +113,9 @@ Each phase change updates `data/demo_state.json`, which the PyGame UI picks up w
 
 - **VAD**: `Silero VAD` (auto-downloaded on first run), fallback to `WebRTC VAD` if unavailable
 - **STT**: local `Sherpa-ONNX` (`sense_voice` int8 model, auto-downloaded on first run)
-- **Search path**: search intent → speak quick hint → `/zero-assistant` → OpenClaw Agent
+- **Search path**: search intent → speak quick hint → `/zero-assistant` → OpenClaw Agent → local TTS text normalization → spoken-form rewrite for noisy results → `Piper`
 - **General Q&A path**: direct `GPT-4o-mini` streaming response
-- **TTS**: local `Piper TTS`; audio is synthesized and played sentence-by-sentence via `ffplay`
+- **TTS**: local `Piper TTS`; search replies are normalized before playback and may be rewritten into a more spoken-friendly Traditional Chinese form before synthesis, while general Q&A is played sentence-by-sentence from the streaming GPT output
 
 ## Configuration
 
