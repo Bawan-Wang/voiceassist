@@ -27,10 +27,10 @@ import threading
 import time
 import urllib.request
 import difflib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Deque, Optional
+from typing import Any, Deque, Optional
 
 import numpy as np
 import onnxruntime
@@ -40,10 +40,13 @@ from openai import OpenAI
 
 try:
     from bridge.providers import PiperTextToSpeechProvider, SherpaOnnxSpeechToTextProvider
+    from bridge.runtime_config import get_selected_provider, load_app_config, resolve_project_path
 except ModuleNotFoundError:
     from providers import PiperTextToSpeechProvider, SherpaOnnxSpeechToTextProvider
+    from runtime_config import get_selected_provider, load_app_config, resolve_project_path
 
 BASE_DIR = Path(__file__).parent.parent  # repo root (voiceassist/)
+DEFAULT_CONFIG_PATH = BASE_DIR / "config.yaml"
 STATE_PATH = BASE_DIR / "data" / "demo_state.json"
 SILERO_MODEL_PATH = BASE_DIR / "models" / "silero_vad.onnx"
 SILERO_MODEL_URL = (
@@ -52,6 +55,11 @@ SILERO_MODEL_URL = (
 DEFAULT_WAKE = "兔兔助理"
 DEFAULT_PLAYBACK = "plughw:2,0"
 LLM_MODEL = "gpt-4o-mini"
+API_URL = "http://127.0.0.1:8000/zero-assistant"
+SEARCH_TIMEOUT_SEC = 90
+DIRECT_MAX_TOKENS = 120
+STREAM_MAX_TOKENS = 120
+SEARCH_REPLY_MAX_TOKENS = 120
 TRIM_CHARS = " ，、。!?~'\""
 SENTENCE_ENDINGS = "，,。！？!?；;：:\n"
 STREAM_CHUNK_CHARS = 24
@@ -64,6 +72,7 @@ SPOKEN_REPLY_PROMPT = (
     "規則：只保留重點、1到2句、不要網址、不要 Markdown、不要括號引用、"
     "不要條列、不要唸出奇怪符號，盡量口語自然。"
 )
+SEARCH_HINT = "好，我幫你查一下，請稍等。"
 
 
 @dataclass
@@ -73,6 +82,26 @@ class BridgeConfig:
     padding_ms: int = 600
     input_device: Optional[int] = None
     playback_device: str = DEFAULT_PLAYBACK
+    pending_wake_timeout_sec: float = 1.2
+    auto_route_cooldown_sec: float = 2.0
+    webrtc_aggressiveness: int = 2
+    silero_speech_threshold: float = 0.5
+    silero_silence_threshold: float = 0.2
+    silero_vote_window: int = 5
+    silero_vote_required: int = 3
+    search_timeout_sec: int = SEARCH_TIMEOUT_SEC
+    direct_max_tokens: int = DIRECT_MAX_TOKENS
+    stream_max_tokens: int = STREAM_MAX_TOKENS
+    search_reply_max_tokens: int = SEARCH_REPLY_MAX_TOKENS
+    rewrite_search_reply_for_speech: bool = True
+    spoken_reply_timeout_sec: int = 12
+    spoken_reply_max_input_chars: int = 1200
+    search_hint: str = SEARCH_HINT
+    api_url: str = API_URL
+    stt_provider_type: str = "sherpa_onnx_local"
+    stt_provider_config: dict[str, Any] = field(default_factory=dict)
+    tts_provider_type: str = "piper_local"
+    tts_provider_config: dict[str, Any] = field(default_factory=dict)
     wake_variants: tuple[str, ...] = (
         "兔兔助理", "兔兔助手", "兔兔兔", "兔兔", "bunny assistant", "bunny helper", "zero",
         # 常見誤辨容錯
@@ -91,19 +120,19 @@ def is_search_intent(text: str) -> bool:
     return any(tok in text for tok in _SEARCH_TOKENS)
 
 
-def ensure_silero_model() -> Optional[Path]:
+def ensure_silero_model(model_path: Path, model_url: str) -> Optional[Path]:
     """Ensure the Silero VAD model exists locally, downloading it on first use."""
-    if SILERO_MODEL_PATH.exists():
-        return SILERO_MODEL_PATH
+    if model_path.exists():
+        return model_path
 
     try:
-        SILERO_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = SILERO_MODEL_PATH.with_suffix(".onnx.tmp")
-        print(f"[voice_bridge] Silero model missing; downloading from {SILERO_MODEL_URL}")
-        urllib.request.urlretrieve(SILERO_MODEL_URL, tmp_path)
-        tmp_path.replace(SILERO_MODEL_PATH)
-        print(f"[voice_bridge] Silero model downloaded to {SILERO_MODEL_PATH}")
-        return SILERO_MODEL_PATH
+        model_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = model_path.with_suffix(".onnx.tmp")
+        print(f"[voice_bridge] Silero model missing; downloading from {model_url}")
+        urllib.request.urlretrieve(model_url, tmp_path)
+        tmp_path.replace(model_path)
+        print(f"[voice_bridge] Silero model downloaded to {model_path}")
+        return model_path
     except Exception as exc:  # pylint: disable=broad-except
         print(f"[voice_bridge] Silero model download failed: {exc}")
         try:
@@ -114,21 +143,104 @@ def ensure_silero_model() -> Optional[Path]:
 
 
 class _SileroVADState:
-    def __init__(self) -> None:
+    def __init__(self, vote_window: int) -> None:
         self.state = np.zeros((2, 1, 128), dtype=np.float32)
         self.context = np.zeros((1, 64), dtype=np.float32)
         self.audio_buffer = bytearray()
-        self.voice_window: Deque[bool] = collections.deque(maxlen=5)
+        self.voice_window: Deque[bool] = collections.deque(maxlen=vote_window)
         self.last_is_voice = False
+
+
+def apply_runtime_config(app_config: dict[str, Any]) -> dict[str, Any]:
+    global STATE_PATH, SILERO_MODEL_PATH, SILERO_MODEL_URL
+    global DEFAULT_WAKE, DEFAULT_PLAYBACK, LLM_MODEL, API_URL
+    global SEARCH_TIMEOUT_SEC, DIRECT_MAX_TOKENS, STREAM_MAX_TOKENS, SEARCH_REPLY_MAX_TOKENS
+    global TRIM_CHARS, SENTENCE_ENDINGS, STREAM_CHUNK_CHARS
+    global LLM_SYSTEM_PROMPT, SPOKEN_REPLY_PROMPT, SEARCH_HINT, _SEARCH_TOKENS
+
+    voice_config = app_config.get("voiceBridge", {})
+    audio = voice_config.get("audio", {})
+    wake = voice_config.get("wake", {})
+    routing = voice_config.get("routing", {})
+    prompts = voice_config.get("prompts", {})
+    text_cfg = voice_config.get("text", {})
+    vad = voice_config.get("vad", {})
+    silero = vad.get("silero", {})
+
+    STATE_PATH = resolve_project_path(voice_config.get("state_path", STATE_PATH))
+    SILERO_MODEL_PATH = resolve_project_path(silero.get("model_path", SILERO_MODEL_PATH))
+    SILERO_MODEL_URL = silero.get("model_url", SILERO_MODEL_URL)
+    DEFAULT_WAKE = wake.get("primary", DEFAULT_WAKE)
+    DEFAULT_PLAYBACK = audio.get("playback_device", DEFAULT_PLAYBACK)
+    LLM_MODEL = routing.get("llm_model", LLM_MODEL)
+    API_URL = routing.get("api_url", API_URL)
+    SEARCH_TIMEOUT_SEC = int(routing.get("search_timeout_sec", SEARCH_TIMEOUT_SEC))
+    DIRECT_MAX_TOKENS = int(routing.get("direct_max_tokens", DIRECT_MAX_TOKENS))
+    STREAM_MAX_TOKENS = int(routing.get("stream_max_tokens", STREAM_MAX_TOKENS))
+    SEARCH_REPLY_MAX_TOKENS = int(routing.get("search_reply_max_tokens", SEARCH_REPLY_MAX_TOKENS))
+    TRIM_CHARS = text_cfg.get("trim_chars", TRIM_CHARS)
+    SENTENCE_ENDINGS = text_cfg.get("sentence_endings", SENTENCE_ENDINGS)
+    STREAM_CHUNK_CHARS = int(text_cfg.get("stream_chunk_chars", STREAM_CHUNK_CHARS))
+    LLM_SYSTEM_PROMPT = prompts.get("llm_system", LLM_SYSTEM_PROMPT)
+    SPOKEN_REPLY_PROMPT = prompts.get("spoken_reply", SPOKEN_REPLY_PROMPT)
+    SEARCH_HINT = routing.get("search_hint", SEARCH_HINT)
+    _SEARCH_TOKENS = tuple(text_cfg.get("search_tokens", list(_SEARCH_TOKENS)))
+
+    return voice_config
+
+
+def build_bridge_config(voice_config: dict[str, Any], args: argparse.Namespace) -> BridgeConfig:
+    audio = voice_config.get("audio", {})
+    wake = voice_config.get("wake", {})
+    routing = voice_config.get("routing", {})
+    vad = voice_config.get("vad", {})
+    silero = vad.get("silero", {})
+    _, stt_provider = get_selected_provider(voice_config, "stt")
+    _, tts_provider = get_selected_provider(voice_config, "tts")
+
+    input_device = args.input_device if args.input_device is not None else audio.get("input_device")
+    playback_device = args.playback_device or audio.get("playback_device", DEFAULT_PLAYBACK)
+
+    cfg = BridgeConfig(
+        sample_rate=int(audio.get("sample_rate", 16000)),
+        frame_ms=int(audio.get("frame_ms", 30)),
+        padding_ms=int(audio.get("padding_ms", 600)),
+        input_device=input_device,
+        playback_device=playback_device,
+        pending_wake_timeout_sec=float(wake.get("follow_up_timeout_sec", 1.2)),
+        auto_route_cooldown_sec=float(wake.get("auto_route_cooldown_sec", 2.0)),
+        webrtc_aggressiveness=int(vad.get("webrtc_aggressiveness", 2)),
+        silero_speech_threshold=float(silero.get("speech_threshold", 0.5)),
+        silero_silence_threshold=float(silero.get("silence_threshold", 0.2)),
+        silero_vote_window=int(silero.get("vote_window", 5)),
+        silero_vote_required=int(silero.get("vote_required", 3)),
+        search_timeout_sec=int(routing.get("search_timeout_sec", SEARCH_TIMEOUT_SEC)),
+        direct_max_tokens=int(routing.get("direct_max_tokens", DIRECT_MAX_TOKENS)),
+        stream_max_tokens=int(routing.get("stream_max_tokens", STREAM_MAX_TOKENS)),
+        search_reply_max_tokens=int(routing.get("search_reply_max_tokens", SEARCH_REPLY_MAX_TOKENS)),
+        rewrite_search_reply_for_speech=bool(routing.get("rewrite_search_reply_for_speech", True)),
+        spoken_reply_timeout_sec=int(routing.get("spoken_reply_timeout_sec", 12)),
+        spoken_reply_max_input_chars=int(routing.get("spoken_reply_max_input_chars", 1200)),
+        search_hint=str(routing.get("search_hint", SEARCH_HINT)),
+        api_url=str(routing.get("api_url", API_URL)),
+        stt_provider_type=str(stt_provider.get("type", "sherpa_onnx_local")),
+        stt_provider_config={key: value for key, value in stt_provider.items() if key not in {"type", "name"}},
+        tts_provider_type=str(tts_provider.get("type", "piper_local")),
+        tts_provider_config={key: value for key, value in tts_provider.items() if key not in {"type", "name"}},
+        wake_variants=tuple(wake.get("variants", BridgeConfig.wake_variants)),
+    )
+    if args.wake:
+        cfg.wake_variants = tuple(dict.fromkeys((args.wake, *cfg.wake_variants)))
+    return cfg
 
 
 class VoiceBridge:
     def __init__(self, cfg: BridgeConfig, client: OpenAI) -> None:
         self.cfg = cfg
         self.client = client
-        self.stt_provider = SherpaOnnxSpeechToTextProvider(sample_rate=cfg.sample_rate)
-        self.tts_provider = PiperTextToSpeechProvider()
-        self.webrtc_vad = webrtcvad.Vad(2)
+        self.stt_provider = self._create_stt_provider()
+        self.tts_provider = self._create_tts_provider()
+        self.webrtc_vad = webrtcvad.Vad(cfg.webrtc_aggressiveness)
         self.frame_bytes = int(cfg.sample_rate * cfg.frame_ms / 1000) * 2  # 16-bit mono
         self.padding_frames = cfg.padding_ms // cfg.frame_ms
         self._running = True
@@ -136,7 +248,7 @@ class VoiceBridge:
         self._last_auto_command_ts = 0.0
         self._silero_session: Optional[onnxruntime.InferenceSession] = None
 
-        silero_model_path = ensure_silero_model()
+        silero_model_path = ensure_silero_model(SILERO_MODEL_PATH, SILERO_MODEL_URL)
         if silero_model_path is not None and silero_model_path.exists():
             try:
                 opts = onnxruntime.SessionOptions()
@@ -150,6 +262,21 @@ class VoiceBridge:
                 print(f"[voice_bridge] Using Silero VAD: {silero_model_path}")
             except Exception as exc:  # pylint: disable=broad-except
                 print(f"[voice_bridge] Silero VAD init failed, fallback to WebRTC: {exc}")
+
+    def _create_stt_provider(self) -> SherpaOnnxSpeechToTextProvider:
+        provider_type = self.cfg.stt_provider_type.lower()
+        if provider_type == "sherpa_onnx_local":
+            return SherpaOnnxSpeechToTextProvider(
+                sample_rate=self.cfg.sample_rate,
+                **self.cfg.stt_provider_config,
+            )
+        raise ValueError(f"Unsupported STT provider type: {self.cfg.stt_provider_type}")
+
+    def _create_tts_provider(self) -> PiperTextToSpeechProvider:
+        provider_type = self.cfg.tts_provider_type.lower()
+        if provider_type == "piper_local":
+            return PiperTextToSpeechProvider(**self.cfg.tts_provider_config)
+        raise ValueError(f"Unsupported TTS provider type: {self.cfg.tts_provider_type}")
 
     def run(self) -> None:
         signal.signal(signal.SIGINT, self._handle_stop)
@@ -182,7 +309,7 @@ class VoiceBridge:
                 if not command:
                     command = transcript.replace(matched, '', 1).strip()
                 if not command:
-                    self._pending_wake_until = now + timedelta(seconds=1.2)
+                    self._pending_wake_until = now + timedelta(seconds=self.cfg.pending_wake_timeout_sec)
                     print("[voice_bridge] Wake word heard; waiting for next sentence as command")
                     update_state("listening", user_text="請說指令", assistant_text="")
                     continue
@@ -204,7 +331,7 @@ class VoiceBridge:
 
             searching = is_search_intent(command)
             if searching:
-                hint = "好，我幫你查一下，請稍等。"
+                hint = self.cfg.search_hint
                 print(f"[voice_bridge] Search intent detected, speaking hint first")
                 update_state("thinking", user_text=command, assistant_text=hint)
                 self.speak(hint)
@@ -268,7 +395,7 @@ class VoiceBridge:
 
         now_ts = time.time()
         # Cooldown to avoid rapid accidental fire
-        if now_ts - self._last_auto_command_ts < 2.0:
+        if now_ts - self._last_auto_command_ts < self.cfg.auto_route_cooldown_sec:
             return False
 
         # If sentence looks command-like, always route
@@ -294,7 +421,7 @@ class VoiceBridge:
         voiced_frames: list[bytes] = []
         triggered = False
         last_voice = time.time()
-        silero_state = _SileroVADState() if self._silero_session is not None else None
+        silero_state = _SileroVADState(self.cfg.silero_vote_window) if self._silero_session is not None else None
 
         with sd.RawInputStream(blocksize=self.frame_bytes // 2, device=self.cfg.input_device) as stream:
             while self._running:
@@ -352,16 +479,16 @@ class VoiceBridge:
             silero_state.context = audio_input[:, -64:]
             speech_prob = float(out.item())
 
-            if speech_prob >= 0.5:
+            if speech_prob >= self.cfg.silero_speech_threshold:
                 is_voice = True
-            elif speech_prob <= 0.2:
+            elif speech_prob <= self.cfg.silero_silence_threshold:
                 is_voice = False
             else:
                 is_voice = silero_state.last_is_voice
 
             silero_state.last_is_voice = is_voice
             silero_state.voice_window.append(is_voice)
-            detected_voice = silero_state.voice_window.count(True) >= 3
+            detected_voice = silero_state.voice_window.count(True) >= self.cfg.silero_vote_required
 
         return detected_voice
 
@@ -386,9 +513,8 @@ class VoiceBridge:
     def _reply_via_api(self, prompt: str) -> str:
         """POST to local /zero-assistant (OpenClaw Agent) for search/browse."""
         import requests
-        url = "http://127.0.0.1:8000/zero-assistant"
         try:
-            resp = requests.post(url, json={"text": prompt}, timeout=90)
+            resp = requests.post(self.cfg.api_url, json={"text": prompt}, timeout=self.cfg.search_timeout_sec)
             resp.raise_for_status()
             result = (resp.json().get("reply_text") or "").strip()
             print(f"[voice_bridge] API reply: {result[:80]}{'...' if len(result)>80 else ''}")
@@ -409,7 +535,7 @@ class VoiceBridge:
                     },
                     {"role": "user", "content": prompt},
                 ],
-                max_tokens=120,
+                max_tokens=self.cfg.direct_max_tokens,
             )
             result = (resp.choices[0].message.content or "").strip()
             print(f"[voice_bridge] GPT-4o-mini reply: {result[:80]}{'...' if len(result)>80 else ''}")
@@ -437,7 +563,7 @@ class VoiceBridge:
                         },
                         {"role": "user", "content": prompt},
                     ],
-                    max_tokens=120,
+                    max_tokens=self.cfg.stream_max_tokens,
                     stream=True,
                 )
                 for chunk in stream:
@@ -526,7 +652,7 @@ class VoiceBridge:
 
     def _prepare_reply_for_speech(self, text: str, search: bool) -> str:
         cleaned = self._normalize_tts_text(text)
-        if search:
+        if search and self.cfg.rewrite_search_reply_for_speech:
             rewritten = self._rewrite_search_reply_for_speech(cleaned)
             if rewritten:
                 return self._normalize_tts_text(rewritten)
@@ -572,10 +698,10 @@ class VoiceBridge:
                 model=LLM_MODEL,
                 messages=[
                     {"role": "system", "content": SPOKEN_REPLY_PROMPT},
-                    {"role": "user", "content": text[:1200]},
+                    {"role": "user", "content": text[: self.cfg.spoken_reply_max_input_chars]},
                 ],
-                max_tokens=120,
-                timeout=12,
+                max_tokens=self.cfg.search_reply_max_tokens,
+                timeout=self.cfg.spoken_reply_timeout_sec,
             )
             rewritten = (resp.choices[0].message.content or "").strip()
             if rewritten:
@@ -614,9 +740,19 @@ def update_state(phase: str, *, user_text: Optional[str] = None, assistant_text:
     STATE_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
-def build_arg_parser() -> argparse.ArgumentParser:
+def build_arg_parser(default_config_path: Path, default_input_device: Optional[int]) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run Zero's audio bridge")
-    parser.add_argument("--input-device", type=int, default=None, help="sounddevice input device index (default: system default)")
+    parser.add_argument(
+        "--config",
+        default=str(default_config_path),
+        help=f"Path to config YAML (default: {default_config_path})",
+    )
+    parser.add_argument(
+        "--input-device",
+        type=int,
+        default=default_input_device,
+        help="sounddevice input device index (default: config.yaml or system default)",
+    )
     parser.add_argument(
         "--playback-device",
         default=DEFAULT_PLAYBACK,
@@ -631,14 +767,15 @@ def main() -> None:
         print("Please set OPENAI_API_KEY in your environment.")
         sys.exit(1)
 
-    args = build_arg_parser().parse_args()
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
+    pre_args, _ = pre_parser.parse_known_args()
+
+    config_path, app_config = load_app_config(pre_args.config)
+    voice_config = apply_runtime_config(app_config)
+    args = build_arg_parser(config_path, voice_config.get("audio", {}).get("input_device")).parse_args()
     client = OpenAI()
-    cfg = BridgeConfig(
-        input_device=args.input_device,
-        playback_device=args.playback_device,
-    )
-    if args.wake:
-        cfg.wake_variants = tuple(dict.fromkeys((args.wake, *cfg.wake_variants)))
+    cfg = build_bridge_config(voice_config, args)
     bridge = VoiceBridge(cfg, client)
     bridge.run()
 

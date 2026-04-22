@@ -32,7 +32,7 @@ Speaker (ffplay ← streaming TTS via Piper local)
 | Voice Bridge | `bridge/voice_bridge.py` | Mic capture, Silero VAD, STT, wake word, GPT routing, search-reply speech cleanup, streaming TTS playback |
 | API Backend | `api/app.py` | FastAPI, local intents, OpenClaw agent routing for search/weather |
 | Control Script | `rabbitctl.sh` | Unified start / stop / restart / status |
-| UI Config | `config.yaml` | Resolution, colors, face dimensions |
+| UI + Voice Config | `config.yaml` | UI settings plus `voiceBridge` runtime config for VAD/STT/TTS/routing/model selection |
 | Shared State | `data/demo_state.json` | Runtime state between bridge and UI (gitignored) |
 
 ## Prerequisites
@@ -131,4 +131,20 @@ assets:
   face_radius: 200
   blink_interval: 4.0
   # colors per phase: idle / listening / thinking / speaking
+
+voiceBridge:
+  stt:
+    active: "SherpaSenseVoice"
+  tts:
+    active: "PiperHuayan"
+```
+
+`config.yaml` now also controls the voice pipeline. The `voiceBridge` section lets you:
+
+- choose the active STT / TTS provider entry via `stt.active` and `tts.active`
+- change model paths and download URLs per provider
+- tune VAD thresholds, wake behavior, routing timeouts, and prompts
+- keep `rabbitctl.sh`, `bridge/voice_bridge.py`, and the UI pointed at the same config file
+
+If you later add another provider entry, you can switch models by editing only `config.yaml`.
 ```

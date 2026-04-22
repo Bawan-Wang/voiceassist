@@ -11,6 +11,7 @@
 |--------------|------|---------|
 | `AGENTS.md` | AI agent 的工作規則（不要自己 commit、要跑測試等）| AI |
 | `ARCHITECTURE.md` | 系統架構圖和元件說明 | AI + 你 |
+| `config.yaml` | UI + 語音橋設定；可切換 STT/TTS provider、模型路徑、VAD 與 routing 參數 | AI + 你 |
 | `docs/tech-debt.md` | 已知問題和待改清單 | AI + 你 |
 | `docs/product-specs/` | 新功能規格書 | AI + 你 |
 | `tests/` | 自動化測試（pytest） | AI + CI |
@@ -89,6 +90,41 @@ tests/test_intent.py::TestIsSearchIntent::test_search_tokens[你好-False]  PASS
 
 ---
 
+## ⚙️ 用 `config.yaml` 切模型
+
+現在 `config.yaml` 不只管 UI，也管 `兔兔助理` 的語音流程。
+
+你主要會改這幾段：
+
+```yaml
+voiceBridge:
+  stt:
+    active: "SherpaSenseVoice"
+    providers:
+      SherpaSenseVoice:
+        type: "sherpa_onnx_local"
+        model_path: "models/.../model.int8.onnx"
+
+  tts:
+    active: "PiperHuayan"
+    providers:
+      PiperHuayan:
+        type: "piper_local"
+        model_path: "models/piper/zh_CN-huayan-medium.onnx"
+```
+
+- `stt.active` / `tts.active`：切換目前要用的 provider
+- `providers.<name>`：放該 provider 的模型路徑、下載 URL、其他參數
+- `vad`：調整 `Silero VAD` / `WebRTC VAD` 相關門檻
+- `routing`：調整搜尋 timeout、LLM model、search rewrite 開關
+
+如果你未來新增第二個 STT 或 TTS provider，通常只要：
+1. 在 `config.yaml` 增加一個 provider entry
+2. 把 `active` 指到它
+3. 必要時再補對應 provider 程式碼
+
+---
+
 ## 🐛 發現 Bug 時，這樣做
 
 ### 方式 A：直接跟 AI 說
@@ -139,7 +175,7 @@ api/app.py 裡面有個 bug，說「新竹天氣」的時候回的是台北的�
   → AI 寫 code + 寫測試
   → AI 跑 pytest，給你看結果
   → 你確認沒問題
-  → 你說「重啟測試」→ AI 重啟服務
+  → 你說「可以重啟」→ AI 重啟服務
   → 你實際測試
   → 你說「commit」→ AI commit
   → 你說「push」→ AI push

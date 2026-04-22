@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import sherpa_onnx
@@ -16,24 +17,49 @@ MODEL_URL = "https://modelscope.cn/models/pengzhendong/sherpa-onnx-sense-voice-z
 TOKENS_URL = "https://modelscope.cn/models/pengzhendong/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/master/tokens.txt"
 
 
+def _resolve_path(path_value: str | Path | None, default_path: Path) -> Path:
+    if path_value is None:
+        return default_path
+    path = Path(path_value)
+    if path.is_absolute():
+        return path
+    return BASE_DIR / path
+
+
 class SherpaOnnxSpeechToTextProvider(SpeechToTextProvider):
-    def __init__(self, sample_rate: int = 16_000) -> None:
+    def __init__(
+        self,
+        sample_rate: int = 16_000,
+        *,
+        model_path: str | Path | None = None,
+        tokens_path: str | Path | None = None,
+        model_url: Optional[str] = None,
+        tokens_url: Optional[str] = None,
+        num_threads: int = 2,
+        feature_dim: int = 80,
+        decoding_method: str = "greedy_search",
+        use_itn: bool = True,
+    ) -> None:
         self.sample_rate = sample_rate
+        self.model_path = _resolve_path(model_path, MODEL_PATH)
+        self.tokens_path = _resolve_path(tokens_path, TOKENS_PATH)
+        self.model_url = model_url or MODEL_URL
+        self.tokens_url = tokens_url or TOKENS_URL
         ensure_files(
             (
-                (MODEL_URL, MODEL_PATH),
-                (TOKENS_URL, TOKENS_PATH),
+                (self.model_url, self.model_path),
+                (self.tokens_url, self.tokens_path),
             )
         )
         self.recognizer = sherpa_onnx.OfflineRecognizer.from_sense_voice(
-            model=str(MODEL_PATH),
-            tokens=str(TOKENS_PATH),
-            num_threads=2,
+            model=str(self.model_path),
+            tokens=str(self.tokens_path),
+            num_threads=num_threads,
             sample_rate=sample_rate,
-            feature_dim=80,
-            decoding_method="greedy_search",
+            feature_dim=feature_dim,
+            decoding_method=decoding_method,
             debug=False,
-            use_itn=True,
+            use_itn=use_itn,
         )
 
     def transcribe(self, audio_bytes: bytes) -> str:
