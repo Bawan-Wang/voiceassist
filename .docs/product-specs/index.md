@@ -9,7 +9,13 @@ then tell the agent: "請實作 docs/product-specs/xxx.md"
 
 ## Active Specs
 
-*(none yet — add a .md file here when you have a new feature in mind)*
+| File | Description |
+|------|-------------|
+| [`wake-word.md`](wake-word.md) | Wake word variants, 3-tier matching, two-step wake flow, auto-route cooldown |
+| [`intent-routing.md`](intent-routing.md) | Routing decision tree, search token list, OpenClaw / GPT-4o-mini behaviour, feature flags |
+| [`voice-pipeline.md`](voice-pipeline.md) | STT (SenseVoice), VAD (Silero/WebRTC), TTS (Piper zh-CN), audio config, language support |
+| [`ui-states.md`](ui-states.md) | idle/listening/thinking/speaking — triggers, colors, `demo_state.json` contract |
+| [`local-commands.md`](local-commands.md) | Photoframe and bunny UI switch — trigger phrases, actions, debounce behaviour |
 
 ## How to Write a Spec
 
