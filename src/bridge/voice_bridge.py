@@ -41,7 +41,7 @@ from openai import OpenAI
 from .providers import PiperTextToSpeechProvider, SherpaOnnxSpeechToTextProvider
 from .runtime_config import get_selected_provider, load_app_config, resolve_project_path
 
-BASE_DIR = Path(__file__).parent.parent  # repo root (voiceassist/)
+BASE_DIR = Path(__file__).resolve().parents[2]  # repo root (voiceassist/)
 DEFAULT_CONFIG_PATH = BASE_DIR / "config.yaml"
 STATE_PATH = BASE_DIR / "data" / "demo_state.json"
 SILERO_MODEL_PATH = BASE_DIR / "models" / "silero_vad.onnx"

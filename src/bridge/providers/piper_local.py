@@ -10,7 +10,7 @@ from piper.voice import PiperVoice
 from .common import ensure_files
 from .tts_base import TextToSpeechProvider
 
-BASE_DIR = Path(__file__).resolve().parents[2]
+BASE_DIR = Path(__file__).resolve().parents[3]
 MODEL_DIR = BASE_DIR / "models" / "piper"
 MODEL_PATH = MODEL_DIR / "zh_CN-huayan-medium.onnx"
 MODEL_CONFIG_PATH = MODEL_DIR / "zh_CN-huayan-medium.onnx.json"

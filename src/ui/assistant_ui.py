@@ -20,7 +20,7 @@ import pygame
 import yaml
 
 BASE_DIR = Path(__file__).parent
-PROJECT_DIR = BASE_DIR.parent
+PROJECT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG = PROJECT_DIR / "config.yaml"
 
 PHASES = ("idle", "listening", "thinking", "speaking")

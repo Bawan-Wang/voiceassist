@@ -9,7 +9,7 @@ import sherpa_onnx
 from .asr_base import SpeechToTextProvider
 from .common import ensure_files
 
-BASE_DIR = Path(__file__).resolve().parents[2]
+BASE_DIR = Path(__file__).resolve().parents[3]
 MODEL_DIR = BASE_DIR / "models" / "sherpa-onnx-sense-voice-zh-en-ja-ko-yue"
 MODEL_PATH = MODEL_DIR / "model.int8.onnx"
 TOKENS_PATH = MODEL_DIR / "tokens.txt"
