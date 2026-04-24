@@ -6,11 +6,11 @@ These tests do NOT start any services or touch audio devices.
 import sys
 from pathlib import Path
 
-# Make sure bridge/ is importable without installing the package
+# Make sure src/ is importable without installing the package
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pytest
-from bridge.voice_bridge import is_search_intent
+from src.bridge.voice_bridge import is_search_intent
 
 
 class TestIsSearchIntent:

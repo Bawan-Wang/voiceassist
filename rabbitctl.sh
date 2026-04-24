@@ -49,18 +49,18 @@ if [[ -z "$OPENAI_API_KEY_VALUE" && -f "$HOME/.bashrc" ]]; then
 fi
 
 kill_all() {
-  pkill -9 -f "python ui/assistant_ui.py" || true
-  pkill -9 -f "bridge/voice_bridge.py" || true
-  pkill -9 -f "uvicorn api.app" || true
+  pkill -9 -f "python src/ui/assistant_ui.py" || true
+  pkill -9 -f "src/bridge/voice_bridge.py" || true
+  pkill -9 -f "uvicorn src.api.app" || true
   pkill -9 -f "/home/jh-pi/workspace/photoframe/main.py" || true
   pkill -9 -f "run_photoframe.sh" || true
 }
 
 status() {
   echo "=== rabbit status ==="
-  pgrep -af "uvicorn api.app" || echo "api: stopped"
-  pgrep -af "python ui/assistant_ui.py" || echo "bunny_ui: stopped"
-  pgrep -af "bridge/voice_bridge.py" || echo "voice_bridge: stopped"
+  pgrep -af "uvicorn src.api.app" || echo "api: stopped"
+  pgrep -af "python src/ui/assistant_ui.py" || echo "bunny_ui: stopped"
+  pgrep -af "src/bridge/voice_bridge.py" || echo "voice_bridge: stopped"
   pgrep -af "/home/jh-pi/workspace/photoframe/main.py" || echo "photoframe: stopped"
 }
 
@@ -72,15 +72,16 @@ start() {
 
   kill_all
   cd "$BASE_DIR"
+  export PYTHONPATH="$BASE_DIR"
 
   voice_args=(--config "$CONFIG_PATH" --playback-device "$PLAYBACK" --wake "$WAKE")
   if [[ -n "$INPUT_DEVICE" ]]; then
     voice_args+=(--input-device "$INPUT_DEVICE")
   fi
 
-  OPENAI_API_KEY="$OPENAI_API_KEY_VALUE" ZERO_USE_OPENCLAW_AGENT=1 nohup "$PY" -m uvicorn api.app:app --host 127.0.0.1 --port 8000 --log-level warning >/tmp/assistant_bridge.log 2>&1 &
-  DISPLAY=:0 nohup "$PY" ui/assistant_ui.py "$BASE_DIR/config.yaml" >/tmp/bunny_ui.log 2>&1 &
-  OPENAI_API_KEY="$OPENAI_API_KEY_VALUE" nohup "$PY" -u bridge/voice_bridge.py "${voice_args[@]}" >/tmp/voice_bridge.log 2>&1 &
+  OPENAI_API_KEY="$OPENAI_API_KEY_VALUE" ZERO_USE_OPENCLAW_AGENT=1 nohup "$PY" -m uvicorn src.api.app:app --host 127.0.0.1 --port 8000 --log-level warning >/tmp/assistant_bridge.log 2>&1 &
+  DISPLAY=:0 nohup "$PY" src/ui/assistant_ui.py "$BASE_DIR/config.yaml" >/tmp/bunny_ui.log 2>&1 &
+  OPENAI_API_KEY="$OPENAI_API_KEY_VALUE" nohup "$PY" -u src/bridge/voice_bridge.py "${voice_args[@]}" >/tmp/voice_bridge.log 2>&1 &
 
   sleep 1
   echo "Rabbit started."

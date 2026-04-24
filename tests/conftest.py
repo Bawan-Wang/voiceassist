@@ -44,7 +44,7 @@ def _make_openai_response(text: str) -> MagicMock:
 @pytest.fixture
 def mock_openclaw():
     """Patch subprocess.run so openclaw returns a canned response."""
-    with patch("api.app.subprocess.run") as mock_run:
+    with patch("src.api.app.subprocess.run") as mock_run:
         mock_run.return_value = _make_openclaw_result("這是測試回覆。")
         yield mock_run
 
@@ -64,5 +64,5 @@ def mock_openai():
 @pytest.fixture
 def client(mock_openclaw, mock_openai):
     """FastAPI TestClient with all external calls mocked."""
-    from api.app import app
+    from src.api.app import app
     return TestClient(app)

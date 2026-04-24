@@ -29,7 +29,7 @@ def _case(case_id: str) -> dict:
 
 class TestLocalCommands:
     def test_open_photoframe(self, client):
-        with patch("api.app.open_photoframe", return_value="好的，已幫你打開相框。") as mock_fn:
+        with patch("src.api.app.open_photoframe", return_value="好的，已幫你打開相框。") as mock_fn:
             r = client.post("/zero-assistant", json={"text": "打開相框"})
         assert r.status_code == 200
         data = r.json()
@@ -38,7 +38,7 @@ class TestLocalCommands:
         assert data["reply_text"]
 
     def test_open_bunny(self, client):
-        with patch("api.app.open_bunny_ui", return_value="好的，已切回兔兔助理畫面。") as mock_fn:
+        with patch("src.api.app.open_bunny_ui", return_value="好的，已切回兔兔助理畫面。") as mock_fn:
             r = client.post("/zero-assistant", json={"text": "切回兔兔"})
         assert r.status_code == 200
         data = r.json()
@@ -93,7 +93,7 @@ class TestOpenclawRouting:
     def test_openclaw_timeout_search_returns_hint(self, client, mock_openai):
         """When openclaw times out on a search query, return a clear message (no OpenAI fallback)."""
         import subprocess
-        with patch("api.app.subprocess.run", side_effect=subprocess.TimeoutExpired("openclaw", 90)):
+        with patch("src.api.app.subprocess.run", side_effect=subprocess.TimeoutExpired("openclaw", 90)):
             r = client.post("/zero-assistant", json={"text": "幫我查最新消息"})
         assert r.status_code == 200
         data = r.json()
@@ -102,7 +102,7 @@ class TestOpenclawRouting:
 
     def test_openclaw_failure_falls_back_to_openai(self, client, mock_openai):
         """When openclaw fails (non-search), should fall back to OpenAI."""
-        with patch("api.app.subprocess.run", side_effect=Exception("openclaw unavailable")):
+        with patch("src.api.app.subprocess.run", side_effect=Exception("openclaw unavailable")):
             r = client.post("/zero-assistant", json={"text": "你好"})
         assert r.status_code == 200
         # fallback-openai or still got a reply

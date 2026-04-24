@@ -32,14 +32,15 @@ working in this repository. Read this before making any changes.
 ## Repository Layout
 
 ```
-api/app.py              FastAPI backend — intent routing, LLM calls
-bridge/voice_bridge.py  Mic → VAD → STT → wake word → route → TTS
-ui/assistant_ui.py      PyGame bunny face UI, polls data/demo_state.json
-data/demo_state.json    Runtime shared state (gitignored)
-config.yaml             Display config plus `voiceBridge` runtime/provider settings
-rabbitctl.sh            Start / stop / restart / status all services
-tests/                  Pytest harness (see docs/HOW_TO_USE_THIS_REPO.md)
-docs/                   Specs, architecture, tech debt
+src/api/app.py              FastAPI backend — intent routing, LLM calls
+src/bridge/voice_bridge.py  Mic → VAD → STT → wake word → route → TTS
+src/ui/assistant_ui.py      PyGame bunny face UI, polls data/demo_state.json
+data/demo_state.json        Runtime shared state (gitignored)
+config.yaml                 Display config plus `voiceBridge` runtime/provider settings
+rabbitctl.sh                Start / stop / restart / status all services
+tests/                      Pytest harness (see .docs/HOW_TO_USE_THIS_REPO.md)
+.docs/                      Specs, architecture, exec plans, rules, tech debt
+PLAN.md                     Global blueprint and overall project progress
 ```
 
 ---

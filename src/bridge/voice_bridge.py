@@ -38,12 +38,8 @@ import sounddevice as sd
 import webrtcvad
 from openai import OpenAI
 
-try:
-    from bridge.providers import PiperTextToSpeechProvider, SherpaOnnxSpeechToTextProvider
-    from bridge.runtime_config import get_selected_provider, load_app_config, resolve_project_path
-except ModuleNotFoundError:
-    from providers import PiperTextToSpeechProvider, SherpaOnnxSpeechToTextProvider
-    from runtime_config import get_selected_provider, load_app_config, resolve_project_path
+from .providers import PiperTextToSpeechProvider, SherpaOnnxSpeechToTextProvider
+from .runtime_config import get_selected_provider, load_app_config, resolve_project_path
 
 BASE_DIR = Path(__file__).parent.parent  # repo root (voiceassist/)
 DEFAULT_CONFIG_PATH = BASE_DIR / "config.yaml"

@@ -9,8 +9,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from bridge.runtime_config import load_app_config
-from bridge.voice_bridge import apply_runtime_config, build_bridge_config
+from src.bridge.runtime_config import load_app_config
+from src.bridge.voice_bridge import apply_runtime_config, build_bridge_config
 
 
 def test_build_bridge_config_uses_active_provider_selection(tmp_path):
