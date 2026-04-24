@@ -8,22 +8,22 @@ When fixing an item, move it to the **Resolved** section with the commit hash.
 ## Active
 
 ### LOW — `AssistRequest.language` / `source` fields unused
-- **File:** `api/app.py` — `AssistRequest` model
+- **File:** `src/api/app.py` — `AssistRequest` model
 - **Issue:** Both fields are accepted by the API but never read or used anywhere.
 - **Fix:** Either remove them or wire them up to control routing behaviour.
 
 ### LOW — `_should_route_without_wake()` length fallback may false-trigger
-- **File:** `bridge/voice_bridge.py`
+- **File:** `src/bridge/voice_bridge.py`
 - **Issue:** `len(t) >= 8` routes any 8+ character utterance even without a wake word or command keyword. Background noise transcribed to 8+ characters will trigger a reply.
 - **Fix:** Remove the length fallback, rely only on explicit command tokens.
 
 ### LOW — `DEFAULT_VOICE = "verse"` never used
-- **File:** `bridge/voice_bridge.py`
+- **File:** `src/bridge/voice_bridge.py`
 - **Issue:** The default voice is defined as `"verse"` but `rabbitctl.sh` always passes `--voice shimmer`, shadowing the default.
 - **Fix:** Change `DEFAULT_VOICE` to `"shimmer"` to match actual behaviour.
 
 ### LOW — `PHOTOFRAME_SCRIPT` constant unused
-- **File:** `api/app.py`
+- **File:** `src/api/app.py`
 - **Issue:** `PHOTOFRAME_SCRIPT` is defined but never referenced (photoframe is launched via `PHOTO_CMD` instead).
 - **Fix:** Remove the constant.
 

@@ -2,8 +2,9 @@
 
 ## Current Focus
 
-- Migrating project layout: `api/`, `bridge/`, `ui/` → `src/api/`, `src/bridge/`, `src/ui/`
-- Setting up `.docs/` structure for AI agent + human developer alignment
+- Project layout migration complete (`src/`, `.docs/` structure in place)
+- Product specs written for all core features (see `.docs/product-specs/`)
+- Next: VLM model bridge (exec-plan 002), Taiwan server racing fix (exec-plan 003)
 
 ## Environment Constraints
 
@@ -14,32 +15,6 @@
 - **STT**: Sherpa-ONNX `sense_voice` model — model path set in `config.yaml`
 - **Display**: `:0` — `DISPLAY=:0` required for PyGame UI
 
-## Active Tech Debt
+## Tech Debt
 
-> Migrated from `docs/tech-debt.md` — keep this section in sync.
-
-### LOW — `AssistRequest.language` / `source` fields unused
-- **File:** `src/api/app.py`
-- Both fields are accepted by the API but never read or used.
-
-### LOW — `_should_route_without_wake()` length fallback may false-trigger
-- **File:** `src/bridge/voice_bridge.py`
-- `len(t) >= 8` routes any 8+ character utterance even without a wake word.
-
-### LOW — `DEFAULT_VOICE = "verse"` never used
-- **File:** `src/bridge/voice_bridge.py`
-- Shadowed by `--voice shimmer` in `rabbitctl.sh`.
-
-### LOW — `PHOTOFRAME_SCRIPT` constant unused
-- **File:** `src/api/app.py`
-- Defined but never referenced.
-
-## Resolved Tech Debt
-
-| Commit | Item |
-|--------|------|
-| `c16a9f8` | `BASE_DIR` in voice_bridge pointed to `bridge/` instead of repo root |
-| `c16a9f8` | `open_bunny_ui()` kill pattern missing `ui/` prefix |
-| `bfc6175` | openclaw `TimeoutExpired` silently fell back to OpenAI |
-| `29e91ff` | openclaw stderr merged with stdout corrupted JSON |
-| `be2a567` | Weather queries hardcoded city map caused wrong lookups |
+See `.docs/tech-debt.md` for the full list of known issues and fixes.

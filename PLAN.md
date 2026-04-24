@@ -26,8 +26,9 @@ tests/                       Pytest harness
 | 2 | Voice pipeline (STT + wake word + TTS) | ✅ Done |
 | 3 | FastAPI intent routing + OpenClaw agent | ✅ Done |
 | 4 | Bunny UI + photoframe integration | ✅ Done |
-| 5 | VLM model bridge | 🔲 Planned |
-| 6 | Taiwan server racing fix | 🔲 Planned |
+| 5 | Project restructure (`src/`, `.docs/`) + product specs | ✅ Done |
+| 6 | VLM model bridge | 🔲 Planned |
+| 7 | Taiwan server racing fix | 🔲 Planned |
 
 ## Active Exec Plans
 
