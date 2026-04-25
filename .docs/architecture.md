@@ -21,10 +21,10 @@ bridge/voice_bridge.py
      ▼
 api/app.py  (FastAPI, 127.0.0.1:8000)
   - Local command intents first (open photoframe, open bunny UI)
-  - Search/weather/browse → openclaw agent (timeout 90s)
-  - Non-search requests sent directly to this API still try OpenClaw first when enabled, then fall back to OpenAI
-  - General Q&A is no longer routed here by the voice bridge
-  - Returns { "reply_text": "...", "meta": { "source": "..." } }
+  - Search/weather/browse → OpenAI Responses + `web_search` tool (006, ~3–8 s)
+      └ on failure → OpenClaw agent (90 s, 005-hardened) → plain OpenAI fallback
+  - Non-search → OpenClaw → OpenAI fallback
+  - Returns { "reply_text": "...", "meta": { "source": "openai-websearch|openclaw-agent|fallback-openai|local-command", "search": bool } }
      │
      │  writes data/demo_state.json  { phase, userText, assistantText }
      ├──────────────────────────────────────────────────────────────────►
@@ -42,9 +42,10 @@ bridge/voice_bridge.py  (receives reply_text)
 
 | Component | File | Key Decisions |
 |-----------|------|---------------|
-| Voice Bridge | `bridge/voice_bridge.py` | Audio I/O, Silero/WebRTC VAD, wake word, STT, GPT direct path, search speech cleanup, streaming TTS |
-| API Backend | `api/app.py` | Direct API routing for local commands plus OpenClaw-first handling for incoming `/zero-assistant` requests |
-| Bunny UI | `ui/assistant_ui.py` | Animation only, reads state from JSON |
+| Voice Bridge | `src/bridge/voice_bridge.py` | Audio I/O, Silero/WebRTC VAD, wake word, STT, GPT direct path, search speech cleanup, streaming TTS |
+| API Backend | `src/api/app.py` | Routes local commands, then websearch (006) → OpenClaw → plain OpenAI fallback chain |
+| Websearch Provider | `src/api/websearch.py` | OpenAI Responses + `web_search` tool; disabled with `VOICEASSIST_DISABLE_WEBSEARCH=1` |
+| Bunny UI | `src/ui/assistant_ui.py` | Animation only, reads state from JSON |
 | Control Script | `rabbitctl.sh` | Process management, env var injection |
 | Shared State | `data/demo_state.json` | Bridge ↔ UI IPC (gitignored) |
 
@@ -86,11 +87,11 @@ text input
     └─ everything else
            │
            ├─ contains search tokens (查/搜尋/找/天氣/最新/新聞…)
-           │       → openclaw agent, timeout=90s
+           │       ├─ try OpenAI Responses + `web_search` tool  (006, ~3–8 s)
+           │       └─ on failure / disabled → fall through to OpenClaw
            │
-           └─ general Q&A
-                   → openclaw agent first when `ZERO_USE_OPENCLAW_AGENT=1`
-                   → otherwise / on failure falls back to OpenAI inside `api/app.py`
+           └─ OpenClaw agent (90 s, 005-hardened) when `ZERO_USE_OPENCLAW_AGENT=1`
+                   └─ on failure → plain OpenAI GPT-4o-mini fallback
 ```
 
 Search replies then stay inside `bridge/voice_bridge.py` for a second stage:

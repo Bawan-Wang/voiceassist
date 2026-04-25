@@ -47,10 +47,13 @@ PLAN.md                     Global blueprint and overall project progress
 
 ## LLM Routing
 
-- **Voice bridge path**: search / weather / browse intent → local `POST /zero-assistant` in `src/api/app.py` → OpenClaw Agent (`timeout=90s`)
+- **Voice bridge path**: search / weather / browse intent → local `POST /zero-assistant` in `src/api/app.py` → **OpenAI Responses API + `web_search` tool** (`src/api/websearch.py`, ~3–8 s)
+- **Fallback chain on search failure**: OpenAI websearch → OpenClaw Agent (90 s, 005-hardened) → plain OpenAI GPT-4o-mini
 - **Voice bridge path**: general Q&A → direct **OpenAI GPT-4o-mini** call from `src/bridge/voice_bridge.py`
-- **Direct API path**: `/zero-assistant` still handles local display commands first, then uses OpenClaw-first routing when `ZERO_USE_OPENCLAW_AGENT=1`, with OpenAI fallback for non-search failures
+- **Direct API path**: `/zero-assistant` still handles local display commands first; same routing/fallback chain as above
 - Search replies are normalized for TTS, and `src/bridge/voice_bridge.py` may rewrite noisy search text into a short spoken Traditional Chinese form before `Piper` playback
+- `meta.source` values: `local-command` | `openai-websearch` | `openclaw-agent` | `openclaw-agent-timeout` | `fallback-openai`
+- Rollback: set `VOICEASSIST_DISABLE_WEBSEARCH=1` to skip the websearch path and go straight to OpenClaw
 - Do not assume local commands in `src/api/app.py` are reachable from the default voice-bridge path; today they are only guaranteed on the direct API path
 
 ---

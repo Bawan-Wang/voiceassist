@@ -2,11 +2,25 @@
 
 ## Current Focus
 
-- ✅ Exec-plan 005 done — OpenClaw error responses no longer spoken back to user
-  (added `meta.stopReason == "error"` and `returncode` checks; `_extract_text`
-  now only walks `payloads[].text`).
-- 🟡 Next: exec-plan 006 — replace OpenClaw search path with OpenAI Responses
-  API + `web_search` tool (3–8s vs 30–90s); keep OpenClaw as fallback.
+- ✅ Exec-plan 005 done — OpenClaw error responses no longer spoken to the user.
+- ✅ Exec-plan 006 done — search/weather now uses OpenAI Responses API with the
+  built-in `web_search` tool (3–8 s typical, vs 30–90 s on OpenClaw). OpenClaw
+  remains as the fallback path; can be force-disabled with
+  `VOICEASSIST_DISABLE_WEBSEARCH=1`.
+- 🔲 Next: VLM model bridge (phase 8) and Taiwan server racing fix (phase 9).
+
+## Search/Weather Routing (post-006)
+
+```
+search intent
+  │
+  ├─ try src/api/websearch.run_websearch()  → OpenAI Responses + web_search tool
+  │     └─ success → meta.source = "openai-websearch"
+  │
+  └─ on failure / disabled
+        └─ OpenClaw subprocess (005-hardened)  → meta.source = "openclaw-agent"
+              └─ on failure → OpenAI plain GPT-4o-mini  → meta.source = "fallback-openai"
+```
 
 ## Environment Constraints
 
@@ -23,8 +37,8 @@
   github-copilot provider) hits `400 input item ID does not belong to this
   connection`, OpenClaw returns `status: "ok"`, `returncode: 0`, but
   `result.meta.stopReason: "error"` and stuffs the raw error string into
-  `payloads[0].text`. Mitigated in 005 by checking `stopReason` and falling
-  back to OpenAI. Real fix is exec-plan 006 (drop OpenClaw from the hot path).
+  `payloads[0].text`. Mitigated in 005 by checking `stopReason`. Now bypassed
+  by 006 for the hot path — OpenClaw is only invoked as fallback.
 
 ## Tech Debt
 

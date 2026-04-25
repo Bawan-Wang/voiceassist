@@ -13,14 +13,24 @@ Usage: `./rabbitctl.sh {start|stop|restart|status}`
 
 ## External AI Tools
 
-### OpenClaw Agent
-- Invoked via `subprocess.run(["openclaw", "--json", ...], timeout=90)`
-- Used for: search, weather, browse intents
-- Returns JSON: `{"payloads": [{"text": "...", "mediaUrl": null}]}`
+### OpenAI Web Search Tool (primary for search/weather, 006)
+- Module: `src/api/websearch.py`
+- Invoked via `client.responses.create(model="gpt-4o-mini", tools=[{"type": "web_search"}], input=...)`
+- Used for: search, weather, browse intents — typical latency 3–8 s
+- Disable via env: `VOICEASSIST_DISABLE_WEBSEARCH=1`
+- Override model: `ZERO_WEBSEARCH_MODEL`
+- Requires: `OPENAI_API_KEY` env var
 
-### OpenAI GPT-4o-mini
+### OpenClaw Agent (fallback for search/weather)
+- Invoked via `subprocess.run(["openclaw", "--json", ...], timeout=90)`
+- Used as fallback when OpenAI websearch fails
+- Returns JSON: `{"result": {"payloads": [{"text": "..."}], "meta": {"stopReason": "..."}}}`
+- 005-hardened: rejects responses with `meta.stopReason == "error"` or non-zero exit
+
+### OpenAI GPT-4o-mini (general Q&A + final fallback)
 - Invoked via `openai.OpenAI().responses.create(...)`
 - Used for: general Q&A (direct from voice bridge, bypasses FastAPI)
+- Also used as the final fallback in `src/api/app.py` when both websearch and OpenClaw fail
 - Requires: `OPENAI_API_KEY` env var
 
 ## Local AI Models
