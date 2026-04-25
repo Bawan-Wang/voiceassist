@@ -28,3 +28,16 @@ class TestLocalSkillDetection:
         assert callable(voice_bridge.is_local_skill)
         assert voice_bridge.is_local_skill("打開相框") is True
         assert voice_bridge.is_local_skill("你好") is False
+
+
+class TestWakeStripperRecovery:
+    """Regression: the fuzzy wake-word stripper can accidentally eat the
+    bunny noun (e.g. variant '兔兔兔' fuzzy-matches a trailing '回兔兔'),
+    leaving command='切回' which no longer trips is_local_skill.
+    The bridge must check the RAW transcript as a fallback."""
+
+    def test_command_lost_bunny_but_transcript_kept_it(self):
+        command = "切回"  # what wake-stripper produced
+        transcript = "兔兔助理切回兔兔"  # what STT actually heard
+        assert not is_local_skill(command)
+        assert is_local_skill(transcript)  # fallback path catches it

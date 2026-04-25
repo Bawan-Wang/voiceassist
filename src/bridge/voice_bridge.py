@@ -339,10 +339,20 @@ class VoiceBridge:
             # the API BEFORE search detection, so they never get streamed via
             # GPT (which would just return chitchat about the request instead
             # of actually executing it).
+            #
+            # Also check the raw transcript: the fuzzy wake-word stripper can
+            # accidentally eat the bunny noun (e.g. "兔兔助理切回兔兔" → command
+            # "切回" because the trailing 兔兔 matches a fuzzy wake variant).
+            local_text = None
             if is_local_skill(command):
-                print("[voice_bridge] Local skill detected, routing to API")
-                update_state("thinking", user_text=command, assistant_text="")
-                reply = self._reply_via_api(command)
+                local_text = command
+            elif is_local_skill(transcript):
+                local_text = transcript
+                print("[voice_bridge] Local skill found in raw transcript (wake-word stripper ate it)")
+            if local_text is not None:
+                print(f"[voice_bridge] Local skill detected, routing to API: {local_text}")
+                update_state("thinking", user_text=local_text, assistant_text="")
+                reply = self._reply_via_api(local_text)
                 if not reply:
                     update_state("idle", assistant_text="抱歉，沒有聽清楚。")
                     continue
