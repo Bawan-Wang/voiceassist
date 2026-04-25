@@ -7,12 +7,16 @@
   built-in `web_search` tool (3–8 s typical, vs 30–90 s on OpenClaw). OpenClaw
   remains as the fallback path; can be force-disabled with
   `VOICEASSIST_DISABLE_WEBSEARCH=1`.
-- ✅ Exec-plan 007 done — voice command "打開相框 / 相簿 / 照片 / 切回兔兔" now
-  routes through `src/api/skills/` registry; voice bridge gained an
-  `is_local_skill()` pre-check so these phrases hit `/zero-assistant`
-  instead of being streamed as chitchat. Bunny UI fades out via
-  `/tmp/voiceassist_signal.json` IPC. `run_photoframe.sh` has a kivy
-  preflight so silent failure is impossible.
+- ✅ Exec-plan 007 done & live-verified — voice command "打開相框 / 相簿 /
+  照片 / 切回兔兔" now routes through `src/api/skills/` registry; voice
+  bridge gained an `is_local_skill()` pre-check so these phrases hit
+  `/zero-assistant` instead of being streamed as chitchat. Bunny UI fades
+  out via `/tmp/voiceassist_signal.json` IPC. `run_photoframe.sh` has a
+  kivy preflight so silent failure is impossible. Live testing surfaced
+  one bug (fix `e38e3f3`): the fuzzy wake-word stripper was eating the
+  trailing "兔兔" in "兔兔助理切回兔兔" because variant `兔兔兔` fuzzy-
+  matches `回兔兔`. Voice bridge now falls back to checking the raw
+  transcript when the stripped command misses local-skill tokens.
 - 🔲 Next: 008 (photoframe-side fade-in + graceful exit), then VLM bridge.
 
 ## Search/Weather Routing (post-006)

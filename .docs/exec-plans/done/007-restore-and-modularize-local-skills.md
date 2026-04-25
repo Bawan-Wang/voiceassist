@@ -1,6 +1,6 @@
 # 007 — Restore + Modularize Local Skills
 
-## Status: Active 🔴
+## Status: Done ✅ (live-verified 2026-04-25, commits 4ff4b7f + e38e3f3)
 
 ## Motivation
 

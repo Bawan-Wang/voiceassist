@@ -36,10 +36,10 @@ tests/                       Pytest harness
 
 ## Active Exec Plans
 
-- `008-photoframe-smooth-transitions.md` — depends on 007 live verification.
+- `008-photoframe-smooth-transitions.md` — ready to start (007 verified live).
 
 ## Done (archived)
 
 See `.docs/exec-plans/done/` — includes 001 (env), 002 (vlm-bridge), 003
 (taiwan-racing-fix), 004 (voice-bridge-relative-import), 005 (search-error-reply),
-006 (llm-websearch-skill). Plan 007 archive pending live verify.
+006 (llm-websearch-skill), 007 (restore-and-modularize-local-skills).
