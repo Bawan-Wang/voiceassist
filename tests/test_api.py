@@ -107,3 +107,55 @@ class TestOpenclawRouting:
         assert r.status_code == 200
         # fallback-openai or still got a reply
         assert r.json()["reply_text"]
+
+    def test_openclaw_error_json_falls_back_to_openai(self, client, mock_openai):
+        """Regression for exec-plan 005: when openclaw stdout contains an error
+        JSON without payloads[].text (e.g. {"error": "400 ..."}), the API must
+        NOT speak the raw error string back. It should fall through to OpenAI."""
+        err_proc = MagicMock()
+        err_proc.stdout = json.dumps({"error": "400 input item ID does not belong to this connection"})
+        err_proc.stderr = ""
+        err_proc.returncode = 0
+        with patch("src.api.app.subprocess.run", return_value=err_proc):
+            r = client.post("/zero-assistant", json={"text": "你好"})
+        assert r.status_code == 200
+        data = r.json()
+        # Must have fallen back to OpenAI (mocked) — NOT spoken the error string
+        assert "400" not in data["reply_text"]
+        assert "input item ID" not in data["reply_text"]
+        assert data["meta"].get("source") == "fallback-openai"
+
+    def test_openclaw_nonzero_returncode_falls_back(self, client, mock_openai):
+        """When openclaw exits non-zero, should fall back to OpenAI even if stdout has bytes."""
+        err_proc = MagicMock()
+        err_proc.stdout = "{}"
+        err_proc.stderr = "boom"
+        err_proc.returncode = 2
+        with patch("src.api.app.subprocess.run", return_value=err_proc):
+            r = client.post("/zero-assistant", json={"text": "你好"})
+        assert r.status_code == 200
+        assert r.json()["meta"].get("source") == "fallback-openai"
+
+    def test_openclaw_stopreason_error_falls_back(self, client, mock_openai):
+        """Regression for exec-plan 005 (round 2): openclaw can return status:ok
+        and returncode:0 BUT meta.stopReason:'error', wrapping the upstream error
+        string into payloads[].text. Must not speak that text — fall back to OpenAI."""
+        err_proc = MagicMock()
+        err_proc.stdout = json.dumps({
+            "runId": "x",
+            "status": "ok",
+            "summary": "completed",
+            "result": {
+                "payloads": [{"text": "400 input item ID does not belong to this connection", "mediaUrl": None}],
+                "meta": {"stopReason": "error"},
+            },
+        })
+        err_proc.stderr = ""
+        err_proc.returncode = 0
+        with patch("src.api.app.subprocess.run", return_value=err_proc):
+            r = client.post("/zero-assistant", json={"text": "幫我查新北天氣"})
+        assert r.status_code == 200
+        data = r.json()
+        assert "400" not in data["reply_text"]
+        assert "input item ID" not in data["reply_text"]
+        assert data["meta"].get("source") == "fallback-openai"

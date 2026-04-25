@@ -26,7 +26,7 @@ VOICE_DIR = Path("/home/jh-pi/.openclaw/workspace/voiceassist")
 PHOTOFRAME_SCRIPT = str(VOICE_DIR / "run_photoframe.sh")
 BUNNY_PID = "/tmp/voiceassist_bunny.pid"
 PHOTO_PID = "/tmp/voiceassist_photo.pid"
-BUNNY_CMD = f"cd {VOICE_DIR} && DISPLAY=:0 nohup .venv/bin/python ui/assistant_ui.py >/tmp/bunny_ui.log 2>&1 & echo $! > {BUNNY_PID}"
+BUNNY_CMD = f"cd {VOICE_DIR} && DISPLAY=:0 nohup .venv/bin/python src/ui/assistant_ui.py >/tmp/bunny_ui.log 2>&1 & echo $! > {BUNNY_PID}"
 PHOTO_CMD = f"DISPLAY=:0 nohup /home/jh-pi/.openclaw/workspace/voiceassist/run_photoframe.sh >/tmp/photoframe.log 2>&1 & echo $! > {PHOTO_PID}"
 
 _LAST_ACTION = {"name": "", "ts": 0.0}
@@ -119,7 +119,7 @@ def open_photoframe() -> str:
 
         _kill_pidfile(BUNNY_PID)
         _kill_pidfile(PHOTO_PID)
-        _kill_all("python ui/assistant_ui.py")
+        _kill_all("python src/ui/assistant_ui.py")
         _kill_all("run_photoframe.sh")
         _kill_all("/home/jh-pi/workspace/photoframe/main.py")
         time.sleep(0.2)
@@ -150,14 +150,14 @@ def open_bunny_ui() -> str:
         _kill_pidfile(BUNNY_PID)
         _kill_all("run_photoframe.sh")
         _kill_all("/home/jh-pi/workspace/photoframe/main.py")
-        _kill_all("python ui/assistant_ui.py")
+        _kill_all("python src/ui/assistant_ui.py")
         time.sleep(0.2)
         subprocess.run(["bash", "-lc", BUNNY_CMD], check=False)
         time.sleep(0.6)
 
         # enforce singleton
-        if _count("python ui/assistant_ui.py") > 1:
-            _kill_all("python ui/assistant_ui.py")
+        if _count("python src/ui/assistant_ui.py") > 1:
+            _kill_all("python src/ui/assistant_ui.py")
             subprocess.run(["bash", "-lc", BUNNY_CMD], check=False)
 
         return "好的，已切回兔兔助理畫面。"
@@ -198,6 +198,9 @@ def zero_assistant(req: AssistRequest):
             import json as _json
 
             def _extract_text(node):
+                # Only trust payloads[].text — do NOT recurse into arbitrary keys,
+                # otherwise upstream error strings (e.g. {"error": "400 ..."}) get
+                # spoken back to the user as a valid reply. See exec-plan 005.
                 if isinstance(node, dict):
                     payloads = (
                         node.get("result", {}).get("payloads")
@@ -208,18 +211,6 @@ def zero_assistant(req: AssistRequest):
                         for p in payloads:
                             if isinstance(p, dict) and isinstance(p.get("text"), str) and p.get("text").strip():
                                 return p.get("text").strip()
-                if isinstance(node, str):
-                    return node.strip()
-                if isinstance(node, dict):
-                    for v in node.values():
-                        got = _extract_text(v)
-                        if got:
-                            return got
-                if isinstance(node, list):
-                    for it in node:
-                        got = _extract_text(it)
-                        if got:
-                            return got
                 return ""
 
             cmd = [
@@ -234,13 +225,33 @@ def zero_assistant(req: AssistRequest):
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 timeout=agent_timeout,
             )
+            if proc.returncode != 0:
+                raise RuntimeError(
+                    f"openclaw non-zero exit {proc.returncode}; stderr={proc.stderr[:200]}"
+                )
             out = proc.stdout.strip()
             if not out:
                 raise RuntimeError(f"openclaw empty stdout; stderr={proc.stderr[:200]}")
             data = _json.loads(out)
+            # OpenClaw may return status:"ok" but meta.stopReason:"error" when
+            # the underlying agent failed (e.g. upstream LLM 400). In that case
+            # payloads[].text contains the raw error string — must NOT be spoken.
+            stop_reason = ""
+            try:
+                stop_reason = (
+                    data.get("result", {}).get("meta", {}).get("stopReason", "")
+                    if isinstance(data.get("result"), dict)
+                    else data.get("meta", {}).get("stopReason", "")
+                )
+            except Exception:
+                stop_reason = ""
+            if isinstance(stop_reason, str) and stop_reason.lower() == "error":
+                raise RuntimeError(f"openclaw stopReason=error; raw={out[:200]}")
             reply = _extract_text(data)
             if reply:
                 return AssistResponse(reply_text=reply, meta={"source": "openclaw-agent", "search": is_search})
+            # No usable text in payloads — likely an error JSON. Fall through to OpenAI.
+            raise RuntimeError(f"openclaw returned no payload text; raw={out[:200]}")
         except subprocess.TimeoutExpired:
             if is_search:
                 return AssistResponse(
