@@ -193,6 +193,21 @@ def zero_assistant(req: AssistRequest):
     # For openclaw CLI --timeout, give 5s less than subprocess timeout so it can clean up
     cli_timeout = agent_timeout - 5
 
+    # Exec-plan 006: for search/weather, prefer fast OpenAI Responses + web_search tool.
+    # OpenClaw remains as fallback below if this raises.
+    if is_search and os.environ.get("VOICEASSIST_DISABLE_WEBSEARCH", "").strip() != "1":
+        try:
+            from .websearch import run_websearch
+            print("[api] using websearch path", flush=True)
+            reply = run_websearch(text)
+            if reply:
+                return AssistResponse(
+                    reply_text=reply,
+                    meta={"source": "openai-websearch", "search": True},
+                )
+        except Exception as exc:
+            print(f"[api] websearch failed: {exc}; falling back to openclaw", flush=True)
+
     if USE_OPENCLAW_AGENT:
         try:
             import json as _json

@@ -159,3 +159,48 @@ class TestOpenclawRouting:
         assert "400" not in data["reply_text"]
         assert "input item ID" not in data["reply_text"]
         assert data["meta"].get("source") == "fallback-openai"
+
+
+# ---------------------------------------------------------------------------
+# exec-plan 006 — websearch routing
+# ---------------------------------------------------------------------------
+
+class TestWebsearchRouting:
+    def test_search_uses_websearch_when_enabled(self, client_with_websearch):
+        """Search intent should hit run_websearch first (006 path)."""
+        with patch("src.api.websearch.run_websearch", return_value="新北今天晴天，25度。") as mock_ws:
+            r = client_with_websearch.post(
+                "/zero-assistant", json={"text": "幫我查新北天氣"}
+            )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["meta"]["source"] == "openai-websearch"
+        assert data["meta"]["search"] is True
+        assert data["reply_text"] == "新北今天晴天，25度。"
+        mock_ws.assert_called_once()
+
+    def test_websearch_failure_falls_back_to_openclaw(self, client_with_websearch):
+        """If websearch raises, must fall through to existing openclaw path."""
+        with patch("src.api.websearch.run_websearch", side_effect=RuntimeError("boom")):
+            r = client_with_websearch.post(
+                "/zero-assistant", json={"text": "幫我查新北天氣"}
+            )
+        assert r.status_code == 200
+        # mock_openclaw fixture returns a canned ok response
+        assert r.json()["meta"]["source"] == "openclaw-agent"
+
+    def test_chitchat_does_not_use_websearch(self, client_with_websearch):
+        """Non-search queries must NOT touch websearch path."""
+        with patch("src.api.websearch.run_websearch") as mock_ws:
+            r = client_with_websearch.post("/zero-assistant", json={"text": "你好"})
+        assert r.status_code == 200
+        mock_ws.assert_not_called()
+        # Should go through openclaw (mocked) path
+        assert r.json()["meta"]["source"] == "openclaw-agent"
+
+    def test_disable_env_skips_websearch(self, client):
+        """`client` fixture sets VOICEASSIST_DISABLE_WEBSEARCH=1 — must skip 006 path."""
+        with patch("src.api.websearch.run_websearch") as mock_ws:
+            r = client.post("/zero-assistant", json={"text": "幫我查新北天氣"})
+        assert r.status_code == 200
+        mock_ws.assert_not_called()

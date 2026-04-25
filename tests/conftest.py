@@ -62,7 +62,21 @@ def mock_openai():
 
 
 @pytest.fixture
-def client(mock_openclaw, mock_openai):
-    """FastAPI TestClient with all external calls mocked."""
+def client(mock_openclaw, mock_openai, monkeypatch):
+    """FastAPI TestClient with all external calls mocked.
+
+    By default, websearch (exec-plan 006) is DISABLED so existing openclaw
+    routing tests remain valid. Tests that want to exercise the websearch
+    path should use the `client_with_websearch` fixture instead.
+    """
+    monkeypatch.setenv("VOICEASSIST_DISABLE_WEBSEARCH", "1")
+    from src.api.app import app
+    return TestClient(app)
+
+
+@pytest.fixture
+def client_with_websearch(mock_openclaw, mock_openai, monkeypatch):
+    """FastAPI TestClient with websearch ENABLED (006 path active)."""
+    monkeypatch.delenv("VOICEASSIST_DISABLE_WEBSEARCH", raising=False)
     from src.api.app import app
     return TestClient(app)
