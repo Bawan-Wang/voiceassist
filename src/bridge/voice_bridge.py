@@ -116,6 +116,16 @@ def is_search_intent(text: str) -> bool:
     return any(tok in text for tok in _SEARCH_TOKENS)
 
 
+# exec-plan 007: lightweight local-skill detection. Imported lazily so that
+# unit tests / scripts that import voice_bridge for type checks do not pay
+# the cost. The function MUST stay cheap (string-only).
+try:
+    from src.api.skills.tokens import is_local_skill  # noqa: F401
+except Exception:  # pylint: disable=broad-except
+    def is_local_skill(text: str) -> bool:  # type: ignore[no-redef]
+        return False
+
+
 def ensure_silero_model(model_path: Path, model_url: str) -> Optional[Path]:
     """Ensure the Silero VAD model exists locally, downloading it on first use."""
     if model_path.exists():
@@ -324,6 +334,22 @@ class VoiceBridge:
                         update_state("idle")
                         continue
             print(f"[voice_bridge] Command: {command}")
+
+            # exec-plan 007: route local skills (open photoframe / bunny) to
+            # the API BEFORE search detection, so they never get streamed via
+            # GPT (which would just return chitchat about the request instead
+            # of actually executing it).
+            if is_local_skill(command):
+                print("[voice_bridge] Local skill detected, routing to API")
+                update_state("thinking", user_text=command, assistant_text="")
+                reply = self._reply_via_api(command)
+                if not reply:
+                    update_state("idle", assistant_text="抱歉，沒有聽清楚。")
+                    continue
+                update_state("speaking", assistant_text=reply)
+                self.speak(reply)
+                update_state("idle", assistant_text=reply)
+                continue
 
             searching = is_search_intent(command)
             if searching:

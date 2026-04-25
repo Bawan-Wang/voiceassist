@@ -1,7 +1,7 @@
 # Spec: Local Commands
 
-**Module:** `src/api/app.py`
-**Status:** Implemented ✅
+**Module:** `src/api/skills/` (dispatcher), `src/api/app.py` (entry point)
+**Status:** Implemented ✅ (refactored in exec-plan 007)
 
 ---
 
@@ -11,48 +11,52 @@ Certain commands are handled entirely locally without any LLM call. They are mat
 
 ---
 
-## Command: Open Photoframe
+## Command: Open Photoframe (a.k.a. Album)
 
 ### Trigger Phrases
-Command must contain **both** a verb token and an object token:
+Any noun token alone is sufficient (verb is optional):
 
-| Verb tokens | Object tokens |
-|-------------|---------------|
-| `打開`, `開啟` | `相框`, `photoframe` |
+| Object tokens |
+|---------------|
+| `相框`, `相簿`, `照片`, `photoframe`, `album`, `photos`, `photo frame` |
 
-Examples: `打開相框`、`幫我開啟photoframe`
+Examples: `打開相框`、`打開相簿`、`打開照片`、`open photoframe`、`show me the album`
 
-### Action
-Calls `open_photoframe()` in `src/api/app.py`:
-- Launches `run_photoframe.sh` as a background subprocess
-- Kills any existing photoframe process first (debounced)
+### Action — `src/api/skills/open_photoframe.py::run()`
+1. Write `bunny_should_exit=true` to `/tmp/voiceassist_signal.json`
+2. Sleep 0.5s so the bunny UI can run its fade-out
+3. Hard-kill any leftover bunny / photoframe processes (fallback)
+4. Launch `run_photoframe.sh` (which now has a kivy preflight)
+5. Wait up to 1.0s for `/tmp/photoframe.ready`
+6. If kivy was missing or launch failed → reply: `"相框打不開，可能少裝套件，請看 /tmp/photoframe.log。"`
 
-### Reply
+### Reply (success)
 ```
 好的，已幫你打開相框。
 ```
 
 ### Debounce
-- Rapid repeated triggers within the debounce window are ignored
-- Prevents multiple photoframe processes from launching
+Rapid re-triggers within 2.5 s reply with `"已收到，正在切換到相框。"`
 
 ---
 
 ## Command: Switch to Bunny UI
 
 ### Trigger Phrases
-Command must contain **both** a verb token and an object token:
+Any token alone is sufficient:
 
-| Verb tokens | Object tokens |
-|-------------|---------------|
-| `打開`, `開啟`, `切回` | `兔兔`, `bunny` |
+| Object tokens |
+|---------------|
+| `兔兔`, `bunny` |
 
-Examples: `切回兔兔`、`打開bunny`、`開啟兔兔助理畫面`
+Examples: `切回兔兔`、`打開bunny`、`switch to bunny`
 
-### Action
-Calls `open_bunny_ui()` in `src/api/app.py`:
-- Kills any existing bunny UI process
-- Re-launches `src/ui/assistant_ui.py` as a background subprocess with `DISPLAY=:0`
+### Action — `src/api/skills/open_bunny.py::run()`
+1. Write `photoframe_should_exit=true` (008 will honour this; 007 still relies on kill-9)
+2. Sleep 0.3s
+3. Hard-kill any leftover photoframe / bunny processes
+4. Clear `bunny_should_exit=false` so the freshly launched bunny doesn't immediately quit
+5. Launch `src/ui/assistant_ui.py` with `DISPLAY=:0`
 
 ### Reply
 ```
@@ -60,20 +64,40 @@ Calls `open_bunny_ui()` in `src/api/app.py`:
 ```
 
 ### Debounce
-- Same debounce guard as photoframe — rapid triggers are ignored
+2.5 s — rapid re-triggers reply `"已收到，正在切回兔兔。"`
+
+---
+
+## IPC Signal File
+
+`/tmp/voiceassist_signal.json` — atomic-written by skills, polled by UIs.
+
+```json
+{
+  "bunny_should_exit": false,
+  "photoframe_should_exit": false,
+  "ts": 1777108412
+}
+```
+
+The bunny UI (`src/ui/assistant_ui.py`) polls this every ~0.2s; on
+`bunny_should_exit=true` it runs a 0.4s alpha-fade then exits cleanly.
 
 ---
 
 ## Evaluation Order
 
-Local commands are checked **before** search intent detection and LLM routing:
+Local skills are checked **before** search intent detection and LLM routing,
+both in the API (`src/api/app.py`) and in the voice bridge
+(`src/bridge/voice_bridge.py::is_local_skill`):
 
 ```
 Incoming text
       │
       ▼
-Match local command?
-  YES → execute + return reply (no LLM call)
+match_skill(text)?
+  YES → skill.run() + return reply (no LLM call)
+        meta.source = "local-skill", meta.action = NAME
   NO  → continue to intent-routing.md
 ```
 

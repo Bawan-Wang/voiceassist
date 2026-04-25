@@ -292,6 +292,36 @@ def load_config(path: Path) -> Dict:
         return yaml.safe_load(fh)
 
 
+# exec-plan 007: poll /tmp/voiceassist_signal.json for graceful exit signals.
+SIGNAL_PATH = Path("/tmp/voiceassist_signal.json")
+
+
+def _poll_bunny_should_exit() -> bool:
+    try:
+        with SIGNAL_PATH.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return bool(data.get("bunny_should_exit"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return False
+
+
+def _fade_out_and_quit(screen: pygame.Surface, duration: float = 0.4) -> None:
+    """Alpha 1→0 fade by overlaying a black surface, then exit."""
+    overlay = pygame.Surface(screen.get_size())
+    overlay.fill((0, 0, 0))
+    snapshot = screen.copy()
+    steps = 18
+    for i in range(steps + 1):
+        alpha = int(255 * (i / steps))
+        screen.blit(snapshot, (0, 0))
+        overlay.set_alpha(alpha)
+        screen.blit(overlay, (0, 0))
+        pygame.display.flip()
+        pygame.time.delay(int(duration * 1000 / steps))
+    pygame.quit()
+    sys.exit(0)
+
+
 def main() -> None:
     cfg_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_CONFIG
     cfg = load_config(cfg_path)
@@ -311,12 +341,20 @@ def main() -> None:
 
     running = True
     start_time = time.time()
+    last_signal_check = 0.0
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_q):
                 running = False
+
+        # Check IPC signal at most ~5 Hz (cheap file stat).
+        now_ts = time.time()
+        if now_ts - last_signal_check > 0.2:
+            last_signal_check = now_ts
+            if _poll_bunny_should_exit():
+                _fade_out_and_quit(screen)
 
         snapshot = feed.poll()
         tick = time.time() - start_time

@@ -17,8 +17,10 @@ After a command is transcribed, the system classifies it into one of three inten
 Transcribed command
         │
         ▼
-1. Local command? (photoframe / bunny UI keywords)
-   └─ YES → execute locally, return reply, done
+1. Local skill? (photoframe / bunny tokens — see `local-commands.md`)
+   └─ YES → `src.api.skills.match_skill(text).run()`
+            meta.source = "local-skill", meta.action = NAME
+            (also short-circuited in voice_bridge via `is_local_skill()`)
         │
         ▼
 2. Search intent? (see token list below)
@@ -82,7 +84,7 @@ A command is classified as **search intent** if it contains any of the following
 {
   "reply_text": "...",
   "meta": {
-    "source": "local-command" | "openai-websearch" | "openclaw-agent" | "openclaw-agent-timeout" | "fallback-openai",
+    "source": "local-skill" | "local-command" | "openai-websearch" | "openclaw-agent" | "openclaw-agent-timeout" | "fallback-openai",
     "search": true | false
   }
 }

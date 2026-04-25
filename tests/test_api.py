@@ -29,20 +29,32 @@ def _case(case_id: str) -> dict:
 
 class TestLocalCommands:
     def test_open_photoframe(self, client):
-        with patch("src.api.app.open_photoframe", return_value="好的，已幫你打開相框。") as mock_fn:
+        with patch("src.api.skills.open_photoframe.run", return_value="好的，已幫你打開相框。"):
             r = client.post("/zero-assistant", json={"text": "打開相框"})
         assert r.status_code == 200
         data = r.json()
-        assert data["meta"]["source"] == "local-command"
+        assert data["meta"]["source"] == "local-skill"
         assert data["meta"]["action"] == "open_photoframe"
         assert data["reply_text"]
 
+    def test_open_album_alias(self, client):
+        with patch("src.api.skills.open_photoframe.run", return_value="好的，已幫你打開相框。"):
+            r = client.post("/zero-assistant", json={"text": "打開相簿"})
+        assert r.status_code == 200
+        assert r.json()["meta"]["action"] == "open_photoframe"
+
+    def test_open_photos_alias(self, client):
+        with patch("src.api.skills.open_photoframe.run", return_value="好的，已幫你打開相框。"):
+            r = client.post("/zero-assistant", json={"text": "打開照片"})
+        assert r.status_code == 200
+        assert r.json()["meta"]["action"] == "open_photoframe"
+
     def test_open_bunny(self, client):
-        with patch("src.api.app.open_bunny_ui", return_value="好的，已切回兔兔助理畫面。") as mock_fn:
+        with patch("src.api.skills.open_bunny.run", return_value="好的，已切回兔兔助理畫面。"):
             r = client.post("/zero-assistant", json={"text": "切回兔兔"})
         assert r.status_code == 200
         data = r.json()
-        assert data["meta"]["source"] == "local-command"
+        assert data["meta"]["source"] == "local-skill"
         assert data["meta"]["action"] == "open_bunny"
 
     def test_empty_input_returns_400(self, client):
@@ -67,8 +79,8 @@ class TestSearchIntent:
         r = client.post("/zero-assistant", json={"text": text})
         assert r.status_code == 200
         data = r.json()
-        # local-command bypasses search detection, skip those
-        if data["meta"].get("source") != "local-command":
+        # local-skill bypasses search detection, skip those
+        if data["meta"].get("source") not in ("local-skill", "local-command"):
             assert data["meta"].get("search") == expected_search, (
                 f"text={text!r}: expected search={expected_search}, got {data['meta'].get('search')}"
             )

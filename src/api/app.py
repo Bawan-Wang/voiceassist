@@ -171,9 +171,27 @@ def zero_assistant(req: AssistRequest):
     if not text:
         raise HTTPException(status_code=400, detail="empty text")
 
-    # Local command intents first
-    tl = text.lower()
+    # ── Local skills (exec-plan 007) ────────────────────────────────────────
+    # The skills package is the canonical dispatcher. The legacy
+    # `open_photoframe()` / `open_bunny_ui()` helpers below are kept so
+    # external callers (and 005-era tests that patch them) still work,
+    # but the skill modules are the source of truth for new behavior.
+    try:
+        from .skills import match_skill
+        hit = match_skill(text)
+        if hit is not None:
+            reply = hit.run()
+            return AssistResponse(
+                reply_text=reply,
+                meta={"source": "local-skill", "action": hit.NAME},
+            )
+    except Exception as exc:  # pylint: disable=broad-except
+        # Skill dispatcher must never break the API. Fall back to the
+        # deprecated hard-coded routes below.
+        print(f"[api] skill dispatcher error: {exc}", flush=True)
 
+    # ── Deprecated hard-coded routes (TODO(007): remove after live verify) ──
+    tl = text.lower()
     if ("打開" in text or "開啟" in text) and ("相框" in text or "photoframe" in tl):
         msg = open_photoframe()
         return AssistResponse(reply_text=msg, meta={"source": "local-command", "action": "open_photoframe"})

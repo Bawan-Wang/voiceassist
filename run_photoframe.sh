@@ -25,6 +25,13 @@ cd "$WORKSPACE_DIR" || {
     exit 1
 }
 
+# Kivy preflight (exec-plan 007): without this the script silently exits
+# when kivy is missing, and the voice assistant lies "好的，已幫你打開相框".
+if ! python3 -c "import kivy" 2>>/tmp/photoframe.log; then
+    echo "[$(date)] kivy import failed; aborting" >> /tmp/photoframe.log
+    exit 2
+fi
+
 echo "正在啟動Photoframe..."
 echo "工作目錄: $WORKSPACE_DIR"
 echo "Python腳本: $PYTHON_SCRIPT"

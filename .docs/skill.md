@@ -11,6 +11,27 @@
 
 Usage: `./rabbitctl.sh {start|stop|restart|status}`
 
+## Local Skills (callable via `/zero-assistant`, exec-plan 007)
+
+Package: `src/api/skills/`
+
+| Skill | NAME | Tokens | Action |
+|-------|------|--------|--------|
+| Open photoframe / album | `open_photoframe` | `相框 / 相簿 / 照片 / photoframe / album / photos` | Fade bunny → kill bunny → launch `run_photoframe.sh` (logs to `/tmp/photoframe.log`) |
+| Open bunny | `open_bunny` | `兔兔 / bunny` | Signal photoframe to exit → kill photoframe → relaunch `assistant_ui.py` |
+
+Dispatcher: `src.api.skills.match_skill(text)`. Manual `SKILLS = [...]`
+list (option A) so an import error in one skill cannot disable the others.
+When the local LLM tool-calling work lands, this same registry will be
+exposed as the tool-call surface.
+
+IPC: `/tmp/voiceassist_signal.json` — see `_signal.py`. Atomic writes via
+`tempfile + os.replace`.
+
+Voice bridge fast path: `src.api.skills.tokens.is_local_skill(text)` is a
+pure-string helper imported eagerly so the bridge can route local commands
+without touching the FastAPI stack.
+
 ## External AI Tools
 
 ### OpenAI Web Search Tool (primary for search/weather, 006)
