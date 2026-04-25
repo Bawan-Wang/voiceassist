@@ -27,11 +27,16 @@ tests/                       Pytest harness
 | 3 | FastAPI intent routing + OpenClaw agent | ✅ Done |
 | 4 | Bunny UI + photoframe integration | ✅ Done |
 | 5 | Project restructure (`src/`, `.docs/`) + product specs | ✅ Done |
-| 6 | VLM model bridge | 🔲 Planned |
-| 7 | Taiwan server racing fix | 🔲 Planned |
+| 6 | Fix search returning raw error strings (exec-plan 005) | ✅ Done |
+| 7 | LLM + `web_search` skill (exec-plan 006) | 🟡 Next |
+| 8 | VLM model bridge | 🔲 Planned |
+| 9 | Taiwan server racing fix | 🔲 Planned |
 
 ## Active Exec Plans
 
-- `.docs/exec-plans/001-setup-env.md`
-- `.docs/exec-plans/002-vlm-model-bridge.md`
-- `.docs/exec-plans/003-taiwan-server-racing-fix.md`
+- `.docs/exec-plans/006-llm-websearch-skill.md` — next up
+
+## Done (archived)
+
+See `.docs/exec-plans/done/` — includes 001 (env), 002 (vlm-bridge), 003
+(taiwan-racing-fix), 004 (voice-bridge-relative-import), 005 (search-error-reply).
