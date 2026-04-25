@@ -80,8 +80,21 @@ Examples: `切回兔兔`、`打開bunny`、`switch to bunny`
 }
 ```
 
-The bunny UI (`src/ui/assistant_ui.py`) polls this every ~0.2s; on
-`bunny_should_exit=true` it runs a 0.4s alpha-fade then exits cleanly.
+| Reader | Path | Behaviour on flag = true |
+|--------|------|--------------------------|
+| Bunny UI (`src/ui/assistant_ui.py`) | polls every ~0.2s | 0.4s alpha-fade then `sys.exit(0)` |
+| Photoframe (`~/workspace/photoframe/main.py`, 008) | daemon thread polls every 0.25s | bounces to Kivy main thread → `Animation(opacity=0, 0.4s)` → `App.stop()` |
+
+Both readers ignore the flag if `ts` was set BEFORE they started, so a
+stale signal from a previous session does not immediately kill the new
+process.
+
+## Ready file
+
+`/tmp/photoframe.ready` — touched by photoframe `on_start()` after the
+Kivy window is up; removed on graceful exit. The `open_photoframe` skill
+waits up to 1.5s for it; absence + no live photoframe process → truthful
+failure reply (`"相框打不開…"`).
 
 ---
 

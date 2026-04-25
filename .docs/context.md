@@ -17,7 +17,13 @@
   trailing "兔兔" in "兔兔助理切回兔兔" because variant `兔兔兔` fuzzy-
   matches `回兔兔`. Voice bridge now falls back to checking the raw
   transcript when the stripped command misses local-skill tokens.
-- 🔲 Next: 008 (photoframe-side fade-in + graceful exit), then VLM bridge.
+- ✅ Exec-plan 008 done — photoframe (`~/workspace/photoframe/main.py`)
+  now fades in over 0.4s on launch and exits gracefully via
+  `/tmp/voiceassist_signal.json` (`photoframe_should_exit=true`) instead
+  of being kill -9'd. Photoframe also touches `/tmp/photoframe.ready`
+  so `open_photoframe` can verify a real successful launch (1.5s
+  timeout). Backup at `~/workspace/photoframe.bak.20260425`.
+- 🔲 Next: VLM model bridge, Taiwan server racing fix.
 
 ## Search/Weather Routing (post-006)
 

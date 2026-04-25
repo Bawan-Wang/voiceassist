@@ -30,16 +30,17 @@ tests/                       Pytest harness
 | 6 | Fix search returning raw error strings (exec-plan 005) | ✅ Done |
 | 7 | LLM + `web_search` skill (exec-plan 006) | ✅ Done |
 | 8 | Restore + modularize local skills (exec-plan 007) | ✅ Done |
-| 9 | Photoframe smooth transitions (exec-plan 008) | 🔲 Planned |
+| 9 | Photoframe smooth transitions (exec-plan 008) | ✅ Done |
 | 10 | VLM model bridge | 🔲 Planned |
 | 11 | Taiwan server racing fix | 🔲 Planned |
 
 ## Active Exec Plans
 
-- `008-photoframe-smooth-transitions.md` — ready to start (007 verified live).
+_(none active — ready for the next request)_
 
 ## Done (archived)
 
 See `.docs/exec-plans/done/` — includes 001 (env), 002 (vlm-bridge), 003
 (taiwan-racing-fix), 004 (voice-bridge-relative-import), 005 (search-error-reply),
-006 (llm-websearch-skill), 007 (restore-and-modularize-local-skills).
+006 (llm-websearch-skill), 007 (restore-and-modularize-local-skills),
+008 (photoframe-smooth-transitions).

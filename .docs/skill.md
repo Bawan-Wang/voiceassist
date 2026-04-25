@@ -32,6 +32,17 @@ Voice bridge fast path: `src.api.skills.tokens.is_local_skill(text)` is a
 pure-string helper imported eagerly so the bridge can route local commands
 without touching the FastAPI stack.
 
+### External app contract — photoframe (008)
+
+Photoframe lives in `~/workspace/photoframe/` (separate repo, system
+Python 3 + apt kivy). Contract:
+
+| Direction | File | Writer → Reader | Purpose |
+|-----------|------|-----------------|---------|
+| voiceassist → photoframe | `/tmp/voiceassist_signal.json` | `open_bunny.run()` writes `photoframe_should_exit=true` | Request graceful exit |
+| photoframe → voiceassist | `/tmp/photoframe.ready` | photoframe `on_start()` touches; `_graceful_exit()` removes | Health beacon |
+| both directions | `/tmp/photoframe.log` | `run_photoframe.sh` redirects stdout/stderr | Postmortem on launch failure |
+
 ## External AI Tools
 
 ### OpenAI Web Search Tool (primary for search/weather, 006)

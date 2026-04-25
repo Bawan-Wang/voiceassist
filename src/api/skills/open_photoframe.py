@@ -126,16 +126,16 @@ def run() -> str:
             _kill_all("/home/jh-pi/workspace/photoframe/main.py")
             subprocess.run(["bash", "-lc", PHOTO_CMD], check=False)
 
-        # 5) Wait briefly for the photoframe to declare itself ready.
-        # If 008 hasn't been shipped yet, this just times out — that's fine,
-        # the launch already happened.
-        deadline = time.time() + 1.0
+        # 5) Wait for the photoframe to declare itself ready (008 writes the
+        # real ready file). If it never appears AND no process is alive,
+        # report a truthful failure.
+        deadline = time.time() + 1.5
         while time.time() < deadline:
             if PHOTO_READY.exists():
                 break
             time.sleep(0.1)
         else:
-            if not _alive_from_pidfile(PHOTO_PID):
+            if not _alive_from_pidfile(PHOTO_PID) and _count("run_photoframe.sh") == 0:
                 return f"相框打不開，可能少裝套件，請看 {PHOTO_LOG}。"
 
         return "好的，已幫你打開相框。"

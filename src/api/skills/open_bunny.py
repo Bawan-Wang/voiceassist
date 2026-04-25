@@ -89,12 +89,14 @@ def run() -> str:
         if _alive_from_pidfile(BUNNY_PID):
             return "兔兔畫面已經開啟。"
 
-        # Ask photoframe to exit (008 will honour this; 007 falls back to kill).
+        # Ask photoframe to exit gracefully (008 honours this; older builds
+        # ignore the signal and rely on the kill -9 fallback below).
         try:
             _signal.request_photoframe_exit()
         except Exception:
             pass
-        time.sleep(0.3)
+        # Give photoframe time to run its own fade-out (0.4s) + cleanup.
+        time.sleep(0.6)
 
         _kill_pidfile(PHOTO_PID)
         _kill_pidfile(BUNNY_PID)

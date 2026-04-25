@@ -168,3 +168,14 @@ class TestOpenBunnyRun:
         _signal.request_bunny_exit()  # pre-set
         open_bunny.run()
         assert _signal.read().get("bunny_should_exit") is False
+
+    def test_run_requests_photoframe_exit_before_killing(
+        self, mock_subprocess, isolate_signal, tmp_path, monkeypatch
+    ):
+        """008: open_bunny must signal photoframe to exit gracefully before kill -9."""
+        monkeypatch.setattr(open_bunny, "BUNNY_PID", str(tmp_path / "bunny.pid"))
+        monkeypatch.setattr(open_bunny, "PHOTO_PID", str(tmp_path / "photo.pid"))
+        # speed up: skip the 0.6s graceful-exit wait
+        monkeypatch.setattr(open_bunny.time, "sleep", lambda *_: None)
+        open_bunny.run()
+        assert _signal.read().get("photoframe_should_exit") is True

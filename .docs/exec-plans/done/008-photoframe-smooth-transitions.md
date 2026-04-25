@@ -1,6 +1,6 @@
 # 008 — Photoframe-side Smooth Transitions
 
-## Status: Planned 🟡 (depends on 007 completed first)
+## Status: Done ✅ (2026-04-25)
 
 ## Motivation
 
