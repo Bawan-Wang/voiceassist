@@ -5,6 +5,22 @@ working in this repository. Read this before making any changes.
 
 ---
 
+## Required Reading
+
+Before answering any non-trivial request, consult these files:
+
+- `PLAN.md` — overall roadmap and project progress
+- `.docs/context.md` — current working context / where we left off
+- `.docs/architecture.md` — system design
+- `.docs/skill.md` — repo-specific tips and tricks
+- `.docs/tech-debt.md` — known issues (check before any refactor)
+- `.docs/exec-plans/` (excluding `done/`) — active execution plans
+- `.docs/product-specs/` — required reading when implementing a new feature
+
+When an exec-plan is finished, move it from `.docs/exec-plans/` to `.docs/exec-plans/done/`.
+
+---
+
 ## Workflow Rules
 
 1. **Never commit or push without explicit user approval.**
