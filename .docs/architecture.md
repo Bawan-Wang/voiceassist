@@ -22,9 +22,9 @@ bridge/voice_bridge.py
 api/app.py  (FastAPI, 127.0.0.1:8000)
   - Local command intents first (open photoframe, open bunny UI)
   - Search/weather/browse → OpenAI Responses + `web_search` tool (006, ~3–8 s)
-      └ on failure → OpenClaw agent (90 s, 005-hardened) → plain OpenAI fallback
-  - Non-search → OpenClaw → OpenAI fallback
-  - Returns { "reply_text": "...", "meta": { "source": "openai-websearch|openclaw-agent|fallback-openai|local-command", "search": bool } }
+      └ on failure → plain OpenAI Responses fallback
+  - Non-search → plain OpenAI Responses
+  - Returns { "reply_text": "...", "meta": { "source": "openai-websearch|fallback-openai|local-skill|local-command", "search": bool } }
      │
      │  writes data/demo_state.json  { phase, userText, assistantText }
      ├──────────────────────────────────────────────────────────────────►
@@ -43,7 +43,7 @@ bridge/voice_bridge.py  (receives reply_text)
 | Component | File | Key Decisions |
 |-----------|------|---------------|
 | Voice Bridge | `src/bridge/voice_bridge.py` | Audio I/O, Silero/WebRTC VAD, wake word, STT, GPT direct path, search speech cleanup, streaming TTS |
-| API Backend | `src/api/app.py` | Routes local commands, then websearch (006) → OpenClaw → plain OpenAI fallback chain |
+| API Backend | `src/api/app.py` | Routes local commands, then websearch (006) → plain OpenAI fallback chain |
 | Websearch Provider | `src/api/websearch.py` | OpenAI Responses + `web_search` tool; disabled with `VOICEASSIST_DISABLE_WEBSEARCH=1` |
 | Bunny UI | `src/ui/assistant_ui.py` | Animation only, reads state from JSON |
 | Control Script | `rabbitctl.sh` | Process management, env var injection |
@@ -88,10 +88,9 @@ text input
            │
            ├─ contains search tokens (查/搜尋/找/天氣/最新/新聞…)
            │       ├─ try OpenAI Responses + `web_search` tool  (006, ~3–8 s)
-           │       └─ on failure / disabled → fall through to OpenClaw
+           │       └─ on failure / disabled → fall through to plain OpenAI fallback
            │
-           └─ OpenClaw agent (90 s, 005-hardened) when `ZERO_USE_OPENCLAW_AGENT=1`
-                   └─ on failure → plain OpenAI GPT-4o-mini fallback
+           └─ plain OpenAI GPT-4o-mini Responses fallback (final reply)
 ```
 
 Search replies then stay inside `bridge/voice_bridge.py` for a second stage:
@@ -119,5 +118,5 @@ Phases: `idle` → `listening` → `thinking` → `speaking` → `idle`
 - `Silero VAD`, `Sherpa-ONNX`, and `Piper` model files are downloaded automatically on first run to `models/`
 - `models/` is intentionally gitignored; runtime assets stay local
 - General Q&A playback starts sentence-by-sentence rather than waiting for the full reply
-- Search playback adds a cleanup step before `Piper` so OpenClaw-style search results sound more natural when spoken
+- Search playback adds a cleanup step before `Piper` so web-search results sound more natural when spoken
 - Current architecture is intentionally documented as split behavior: the voice bridge and direct API path are related, but not yet a single routing source of truth

@@ -12,7 +12,7 @@ A local voice assistant running on Raspberry Pi that:
 
 ```
 src/bridge/voice_bridge.py   Mic → VAD → STT → wake word → intent routing → TTS
-src/api/app.py               FastAPI backend — search/weather/browse → OpenClaw agent
+src/api/app.py               FastAPI backend — local skills + websearch (search/weather) + OpenAI fallback
 src/ui/assistant_ui.py       PyGame bunny face UI
 tests/                       Pytest harness
 .docs/                       Specs, architecture, exec plans, rules
@@ -24,7 +24,7 @@ tests/                       Pytest harness
 |-------|-------------|--------|
 | 1 | Project scaffolding & environment setup | ✅ Done |
 | 2 | Voice pipeline (STT + wake word + TTS) | ✅ Done |
-| 3 | FastAPI intent routing + OpenClaw agent | ✅ Done |
+| 3 | FastAPI intent routing + OpenAI/websearch | ✅ Done |
 | 4 | Bunny UI + photoframe integration | ✅ Done |
 | 5 | Project restructure (`src/`, `.docs/`) + product specs | ✅ Done |
 | 6 | Fix search returning raw error strings (exec-plan 005) | ✅ Done |
@@ -33,6 +33,7 @@ tests/                       Pytest harness
 | 9 | Photoframe smooth transitions (exec-plan 008) | ✅ Done |
 | 10 | VLM model bridge | 🔲 Planned |
 | 11 | Taiwan server racing fix | 🔲 Planned |
+| 12 | Drop OpenClaw fallback route (exec-plan 010) | 🔲 Planned |
 
 ## Active Exec Plans
 

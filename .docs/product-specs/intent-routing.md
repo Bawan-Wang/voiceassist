@@ -7,7 +7,7 @@
 
 ## Summary
 
-After a command is transcribed, the system classifies it into one of three intent categories and routes it to the appropriate handler — local execution, OpenAI websearch / OpenClaw fallback, or plain OpenAI GPT-4o-mini.
+After a command is transcribed, the system classifies it into one of three intent categories and routes it to the appropriate handler — local execution, OpenAI websearch (with plain OpenAI fallback), or plain OpenAI GPT-4o-mini.
 
 ---
 
@@ -27,15 +27,13 @@ Transcribed command
    └─ YES → POST /zero-assistant
             ├─ try OpenAI Responses + `web_search` tool   (~3–8 s, 006)
             │     └─ success → meta.source = "openai-websearch"
-            ├─ fallback to OpenClaw Agent (90 s, 005-hardened)
-            │     └─ success → meta.source = "openclaw-agent"
-            └─ final fallback to plain GPT-4o-mini
+            └─ fallback to plain GPT-4o-mini Responses
                   └─ meta.source = "fallback-openai"
         │
         ▼
 3. General Q&A
    ├─ Voice bridge path → direct GPT-4o-mini streaming call
-   └─ API direct path   → same fallback chain as search (without websearch)
+   └─ API direct path   → plain GPT-4o-mini Responses (same fallback engine as search)
 ```
 
 ---
@@ -61,18 +59,16 @@ A command is classified as **search intent** if it contains any of the following
 - Disable via env: `VOICEASSIST_DISABLE_WEBSEARCH=1`
 - Before querying, voice bridge speaks: `"好，我幫你查一下，請稍等。"`
 
-### OpenClaw Agent (fallback)
-- CLI invoked via `subprocess.run(["openclaw", "--json", ...], timeout=90)`
-- Enabled when env var `ZERO_USE_OPENCLAW_AGENT=1` (set by `rabbitctl.sh`)
-- Returns JSON: `{"result": {"payloads": [{"text": "..."}], "meta": {"stopReason": "..."}}}`
-- 005-hardened: rejects responses with `meta.stopReason == "error"` or non-zero exit
-- Search timeout reply (spoken): `"抱歉，這個問題我查比較久，請你等一下再問我一次。"`
-
-### GPT-4o-mini (final fallback)
+### GPT-4o-mini (websearch fallback + general Q&A)
 - Used for general Q&A from voice bridge (streaming, sentence-chunked TTS)
-- Used as the last fallback in API path when both websearch and OpenClaw fail
+- Used as the fallback in API path when websearch fails
 - Model: `gpt-4o-mini`, max tokens: 120
 - Requires: `OPENAI_API_KEY` env var
+
+> _Historical:_ an OpenClaw subprocess (`openclaw agent --channel telegram …`)
+> sat between websearch and GPT-4o-mini fallback until exec-plan 010, which
+> removed it from `src/api/app.py`. The `ZERO_USE_OPENCLAW_AGENT` env var is
+> no longer read.
 
 ---
 
@@ -84,7 +80,7 @@ A command is classified as **search intent** if it contains any of the following
 {
   "reply_text": "...",
   "meta": {
-    "source": "local-skill" | "local-command" | "openai-websearch" | "openclaw-agent" | "openclaw-agent-timeout" | "fallback-openai",
+    "source": "local-skill" | "local-command" | "openai-websearch" | "fallback-openai",
     "search": true | false
   }
 }
@@ -96,9 +92,7 @@ A command is classified as **search intent** if it contains any of the following
 
 | Flag | Effect |
 |------|--------|
-| `VOICEASSIST_DISABLE_WEBSEARCH=1` | Skip OpenAI websearch (006), go directly to OpenClaw fallback |
-| `ZERO_USE_OPENCLAW_AGENT=1` | Enable OpenClaw agent fallback (default in `rabbitctl.sh`) |
-| `ZERO_USE_OPENCLAW_AGENT=0` | Skip OpenClaw fallback, go directly to GPT-4o-mini |
+| `VOICEASSIST_DISABLE_WEBSEARCH=1` | Skip OpenAI websearch (006), go directly to the plain GPT-4o-mini fallback |
 | `ZERO_WEBSEARCH_MODEL` | Override the websearch model (default `gpt-4o-mini`) |
 
 ---

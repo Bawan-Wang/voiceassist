@@ -27,6 +27,10 @@ When fixing an item, move it to the **Resolved** section with the commit hash.
 - **Issue:** `PHOTOFRAME_SCRIPT` is defined but never referenced (photoframe is launched via `PHOTO_CMD` instead).
 - **Fix:** Remove the constant.
 
+### INFO — OpenClaw subprocess fallback removed in exec-plan 010
+- **Files:** `src/api/app.py`, `tests/conftest.py`, `tests/test_api.py`, `tests/fixtures/cases.json`
+- **Note:** The `ZERO_USE_OPENCLAW_AGENT` env var is no longer read; safe to drop from any deployment scripts / systemd units. The `openclaw` CLI itself can stay installed — it is harmless once unreferenced.
+
 ---
 
 ## Resolved

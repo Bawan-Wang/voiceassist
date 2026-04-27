@@ -64,12 +64,12 @@ PLAN.md                     Global blueprint and overall project progress
 ## LLM Routing
 
 - **Voice bridge path**: search / weather / browse intent → local `POST /zero-assistant` in `src/api/app.py` → **OpenAI Responses API + `web_search` tool** (`src/api/websearch.py`, ~3–8 s)
-- **Fallback chain on search failure**: OpenAI websearch → OpenClaw Agent (90 s, 005-hardened) → plain OpenAI GPT-4o-mini
+- **Fallback chain on search failure**: OpenAI websearch → plain OpenAI GPT-4o-mini Responses
 - **Voice bridge path**: general Q&A → direct **OpenAI GPT-4o-mini** call from `src/bridge/voice_bridge.py`
 - **Direct API path**: `/zero-assistant` still handles local display commands first; same routing/fallback chain as above
 - Search replies are normalized for TTS, and `src/bridge/voice_bridge.py` may rewrite noisy search text into a short spoken Traditional Chinese form before `Piper` playback
-- `meta.source` values: `local-command` | `openai-websearch` | `openclaw-agent` | `openclaw-agent-timeout` | `fallback-openai`
-- Rollback: set `VOICEASSIST_DISABLE_WEBSEARCH=1` to skip the websearch path and go straight to OpenClaw
+- `meta.source` values: `local-skill` | `local-command` | `openai-websearch` | `fallback-openai`
+- Rollback: set `VOICEASSIST_DISABLE_WEBSEARCH=1` to skip the websearch path and go straight to the plain OpenAI fallback
 - Do not assume local commands in `src/api/app.py` are reachable from the default voice-bridge path; today they are only guaranteed on the direct API path
 
 ---
@@ -79,4 +79,4 @@ PLAN.md                     Global blueprint and overall project progress
 - Python venv is at `.venv/` — always use `.venv/bin/python` or `.venv/bin/pytest`
 - Logs: `/tmp/assistant_bridge.log`, `/tmp/bunny_ui.log`, `/tmp/voice_bridge.log`
 - `data/` is gitignored — do not commit runtime state files
-- openclaw stderr must NOT be merged with stdout (it pollutes JSON output)
+- The OpenClaw subprocess fallback was removed in exec-plan 010; do not reintroduce it without an explicit plan

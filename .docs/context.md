@@ -4,9 +4,10 @@
 
 - ✅ Exec-plan 005 done — OpenClaw error responses no longer spoken to the user.
 - ✅ Exec-plan 006 done — search/weather now uses OpenAI Responses API with the
-  built-in `web_search` tool (3–8 s typical, vs 30–90 s on OpenClaw). OpenClaw
-  remains as the fallback path; can be force-disabled with
-  `VOICEASSIST_DISABLE_WEBSEARCH=1`.
+  built-in `web_search` tool (3–8 s typical, vs 30–90 s on OpenClaw). On
+  failure the API now falls straight through to a plain OpenAI Responses
+  call (the OpenClaw subprocess fallback is being removed in exec-plan 010).
+  Can still be force-disabled with `VOICEASSIST_DISABLE_WEBSEARCH=1`.
 - ✅ Exec-plan 007 done & live-verified — voice command "打開相框 / 相簿 /
   照片 / 切回兔兔" now routes through `src/api/skills/` registry; voice
   bridge gained an `is_local_skill()` pre-check so these phrases hit
@@ -23,9 +24,12 @@
   of being kill -9'd. Photoframe also touches `/tmp/photoframe.ready`
   so `open_photoframe` can verify a real successful launch (1.5s
   timeout). Backup at `~/workspace/photoframe.bak.20260425`.
-- 🔲 Next: VLM model bridge, Taiwan server racing fix.
+- 🟡 Active: exec-plans 009 (docs cleanup, this commit), 010 (drop OpenClaw
+  subprocess route from `src/api/app.py`), 011 (drop stale VLM / Taiwan-server
+  rows from `PLAN.md`). After 010 lands, OpenClaw is no longer a runtime
+  dependency for `/zero-assistant`.
 
-## Search/Weather Routing (post-006)
+## Search/Weather Routing (post-006, post-010)
 
 ```
 search intent
@@ -34,8 +38,7 @@ search intent
   │     └─ success → meta.source = "openai-websearch"
   │
   └─ on failure / disabled
-        └─ OpenClaw subprocess (005-hardened)  → meta.source = "openclaw-agent"
-              └─ on failure → OpenAI plain GPT-4o-mini  → meta.source = "fallback-openai"
+        └─ plain OpenAI GPT-4o-mini Responses  → meta.source = "fallback-openai"
 ```
 
 ## Environment Constraints
@@ -49,12 +52,13 @@ search intent
 
 ## Known Upstream Issues
 
-- **OpenClaw error wrapping**: when the upstream LLM (`gpt-5.3-codex` via
-  github-copilot provider) hits `400 input item ID does not belong to this
-  connection`, OpenClaw returns `status: "ok"`, `returncode: 0`, but
-  `result.meta.stopReason: "error"` and stuffs the raw error string into
-  `payloads[0].text`. Mitigated in 005 by checking `stopReason`. Now bypassed
-  by 006 for the hot path — OpenClaw is only invoked as fallback.
+- **OpenClaw error wrapping** (historical, removed in 010): when the upstream
+  LLM (`gpt-5.3-codex` via github-copilot provider) hit
+  `400 input item ID does not belong to this connection`, OpenClaw returned
+  `status: "ok"`, `returncode: 0`, but `result.meta.stopReason: "error"` and
+  stuffed the raw error string into `payloads[0].text`. Mitigated in 005,
+  bypassed by 006 for the hot path, and removed entirely in 010 when the
+  OpenClaw subprocess route was deleted from `src/api/app.py`.
 
 ## Tech Debt
 

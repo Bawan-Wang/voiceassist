@@ -2,8 +2,9 @@
 src/api/websearch.py — fast search/weather replies via OpenAI Responses API
 with the built-in `web_search` tool.
 
-Replaces the slow OpenClaw subprocess path for search/weather intents.
-OpenClaw remains as a fallback in `src/api/app.py` (see exec-plan 006).
+Primary path for search/weather intents. On failure the API falls back
+to a plain OpenAI Responses call in `src/api/app.py`
+(see exec-plans 006 and 010).
 
 Rollback: set env `VOICEASSIST_DISABLE_WEBSEARCH=1` to short-circuit.
 """

@@ -535,7 +535,7 @@ class VoiceBridge:
 
     def generate_reply(self, prompt: str, search: bool = False) -> str:
         """Route prompt per spec:
-          search=True  → local /zero-assistant API (OpenClaw Agent, timeout 90s)
+          search=True  → local /zero-assistant API (websearch path, timeout 90s)
           search=False → direct OpenAI GPT-4o-mini call
         """
         if search:
@@ -543,7 +543,7 @@ class VoiceBridge:
         return self._reply_via_gpt4o_mini(prompt)
 
     def _reply_via_api(self, prompt: str) -> str:
-        """POST to local /zero-assistant (OpenClaw Agent) for search/browse."""
+        """POST to local /zero-assistant (websearch path) for search/browse."""
         import requests
         try:
             resp = requests.post(self.cfg.api_url, json={"text": prompt}, timeout=self.cfg.search_timeout_sec)
