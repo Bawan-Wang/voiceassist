@@ -30,7 +30,6 @@ BUNNY_CMD = f"cd {VOICE_DIR} && DISPLAY=:0 nohup .venv/bin/python src/ui/assista
 PHOTO_CMD = f"DISPLAY=:0 nohup /home/jh-pi/.openclaw/workspace/voiceassist/run_photoframe.sh >/tmp/photoframe.log 2>&1 & echo $! > {PHOTO_PID}"
 
 _LAST_ACTION = {"name": "", "ts": 0.0}
-USE_OPENCLAW_AGENT = os.environ.get("ZERO_USE_OPENCLAW_AGENT", "1") == "1"
 
 
 def resolve_openai_key() -> str:
@@ -200,19 +199,19 @@ def zero_assistant(req: AssistRequest):
         msg = open_bunny_ui()
         return AssistResponse(reply_text=msg, meta={"source": "local-command", "action": "open_bunny"})
 
-    # LLM path: default to fast local OpenAI; optionally route via OpenClaw agent when enabled
-    # Detect search/browse/weather intent to allow a longer timeout
+    # LLM path: two-step routing.
+    #   1. Search/browse/weather intents → OpenAI Responses + web_search tool
+    #      (`src/api/websearch.py`). This is the fast primary route (~3–8s).
+    #   2. Everything else, plus websearch failures → plain OpenAI gpt-4o-mini
+    #      Responses fallback at the bottom of this function.
     SEARCH_TOKENS = (
         "查", "搜尋", "搜索", "找", "查詢", "查一下", "幫我查", "最新", "新聞",
         "網路上", "網頁", "資料", "天氣", "weather", "search", "look up", "find", "browse",
     )
     is_search = any(tok in text for tok in SEARCH_TOKENS)
-    agent_timeout = 90 if is_search else 35
-    # For openclaw CLI --timeout, give 5s less than subprocess timeout so it can clean up
-    cli_timeout = agent_timeout - 5
 
     # Exec-plan 006: for search/weather, prefer fast OpenAI Responses + web_search tool.
-    # OpenClaw remains as fallback below if this raises.
+    # On failure, fall through to the plain OpenAI fallback below.
     if is_search and os.environ.get("VOICEASSIST_DISABLE_WEBSEARCH", "").strip() != "1":
         try:
             from .websearch import run_websearch
@@ -224,76 +223,7 @@ def zero_assistant(req: AssistRequest):
                     meta={"source": "openai-websearch", "search": True},
                 )
         except Exception as exc:
-            print(f"[api] websearch failed: {exc}; falling back to openclaw", flush=True)
-
-    if USE_OPENCLAW_AGENT:
-        try:
-            import json as _json
-
-            def _extract_text(node):
-                # Only trust payloads[].text — do NOT recurse into arbitrary keys,
-                # otherwise upstream error strings (e.g. {"error": "400 ..."}) get
-                # spoken back to the user as a valid reply. See exec-plan 005.
-                if isinstance(node, dict):
-                    payloads = (
-                        node.get("result", {}).get("payloads")
-                        if isinstance(node.get("result"), dict)
-                        else node.get("payloads")
-                    )
-                    if isinstance(payloads, list):
-                        for p in payloads:
-                            if isinstance(p, dict) and isinstance(p.get("text"), str) and p.get("text").strip():
-                                return p.get("text").strip()
-                return ""
-
-            cmd = [
-                "openclaw", "agent", "--channel", "telegram",
-                "--to", "8765443076", "--message", text,
-                "--timeout", str(cli_timeout), "--json",
-            ]
-            # stderr must be separated from stdout; openclaw prints gateway
-            # warning/fallback messages to stderr which corrupt the JSON on stdout.
-            proc = subprocess.run(
-                cmd, text=True,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                timeout=agent_timeout,
-            )
-            if proc.returncode != 0:
-                raise RuntimeError(
-                    f"openclaw non-zero exit {proc.returncode}; stderr={proc.stderr[:200]}"
-                )
-            out = proc.stdout.strip()
-            if not out:
-                raise RuntimeError(f"openclaw empty stdout; stderr={proc.stderr[:200]}")
-            data = _json.loads(out)
-            # OpenClaw may return status:"ok" but meta.stopReason:"error" when
-            # the underlying agent failed (e.g. upstream LLM 400). In that case
-            # payloads[].text contains the raw error string — must NOT be spoken.
-            stop_reason = ""
-            try:
-                stop_reason = (
-                    data.get("result", {}).get("meta", {}).get("stopReason", "")
-                    if isinstance(data.get("result"), dict)
-                    else data.get("meta", {}).get("stopReason", "")
-                )
-            except Exception:
-                stop_reason = ""
-            if isinstance(stop_reason, str) and stop_reason.lower() == "error":
-                raise RuntimeError(f"openclaw stopReason=error; raw={out[:200]}")
-            reply = _extract_text(data)
-            if reply:
-                return AssistResponse(reply_text=reply, meta={"source": "openclaw-agent", "search": is_search})
-            # No usable text in payloads — likely an error JSON. Fall through to OpenAI.
-            raise RuntimeError(f"openclaw returned no payload text; raw={out[:200]}")
-        except subprocess.TimeoutExpired:
-            if is_search:
-                return AssistResponse(
-                    reply_text="抱歉，這個問題我查比較久，請你等一下再問我一次。",
-                    meta={"source": "openclaw-agent-timeout", "search": True},
-                )
-            # Non-search timeout: fall through to OpenAI fallback
-        except Exception:
-            pass
+            print(f"[api] websearch failed: {exc}; falling back to openai", flush=True)
 
     try:
         from openai import OpenAI
@@ -322,6 +252,9 @@ def zero_assistant(req: AssistRequest):
 
         if not reply:
             reply = "抱歉，我暫時無法產生回覆。"
-        return AssistResponse(reply_text=reply, meta={"model": OPENAI_MODEL, "source": "fallback-openai"})
+        return AssistResponse(
+            reply_text=reply,
+            meta={"model": OPENAI_MODEL, "source": "fallback-openai", "search": is_search},
+        )
     except Exception as exc:
         return AssistResponse(reply_text="抱歉，我剛剛出現錯誤。", meta={"error": str(exc)})

@@ -2,7 +2,7 @@
 test_api.py — API-level tests for POST /zero-assistant
 
 These tests hit the FastAPI endpoint directly (no real HTTP server needed).
-All external calls (openclaw, OpenAI) are mocked via conftest.py fixtures.
+All external calls (OpenAI) are mocked via conftest.py fixtures.
 """
 import json
 import pytest
@@ -24,7 +24,7 @@ def _case(case_id: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Local command tests (no openclaw needed)
+# Local command tests
 # ---------------------------------------------------------------------------
 
 class TestLocalCommands:
@@ -87,90 +87,14 @@ class TestSearchIntent:
 
 
 # ---------------------------------------------------------------------------
-# openclaw agent routing
+# General Q&A — plain OpenAI fallback
 # ---------------------------------------------------------------------------
 
-class TestOpenclawRouting:
-    def test_general_qa_uses_openclaw(self, client):
+class TestGeneralQA:
+    def test_chitchat_uses_openai_fallback(self, client):
         r = client.post("/zero-assistant", json={"text": "你好"})
         assert r.status_code == 200
-        assert r.json()["meta"]["source"] == "openclaw-agent"
-        assert r.json()["reply_text"]
-
-    def test_weather_uses_openclaw(self, client):
-        r = client.post("/zero-assistant", json={"text": "高雄今天天氣如何"})
-        assert r.status_code == 200
-        assert r.json()["meta"]["source"] == "openclaw-agent"
-
-    def test_openclaw_timeout_search_returns_hint(self, client, mock_openai):
-        """When openclaw times out on a search query, return a clear message (no OpenAI fallback)."""
-        import subprocess
-        with patch("src.api.app.subprocess.run", side_effect=subprocess.TimeoutExpired("openclaw", 90)):
-            r = client.post("/zero-assistant", json={"text": "幫我查最新消息"})
-        assert r.status_code == 200
-        data = r.json()
-        assert data["meta"]["source"] == "openclaw-agent-timeout"
-        assert "再問" in data["reply_text"] or "等" in data["reply_text"]
-
-    def test_openclaw_failure_falls_back_to_openai(self, client, mock_openai):
-        """When openclaw fails (non-search), should fall back to OpenAI."""
-        with patch("src.api.app.subprocess.run", side_effect=Exception("openclaw unavailable")):
-            r = client.post("/zero-assistant", json={"text": "你好"})
-        assert r.status_code == 200
-        # fallback-openai or still got a reply
-        assert r.json()["reply_text"]
-
-    def test_openclaw_error_json_falls_back_to_openai(self, client, mock_openai):
-        """Regression for exec-plan 005: when openclaw stdout contains an error
-        JSON without payloads[].text (e.g. {"error": "400 ..."}), the API must
-        NOT speak the raw error string back. It should fall through to OpenAI."""
-        err_proc = MagicMock()
-        err_proc.stdout = json.dumps({"error": "400 input item ID does not belong to this connection"})
-        err_proc.stderr = ""
-        err_proc.returncode = 0
-        with patch("src.api.app.subprocess.run", return_value=err_proc):
-            r = client.post("/zero-assistant", json={"text": "你好"})
-        assert r.status_code == 200
-        data = r.json()
-        # Must have fallen back to OpenAI (mocked) — NOT spoken the error string
-        assert "400" not in data["reply_text"]
-        assert "input item ID" not in data["reply_text"]
-        assert data["meta"].get("source") == "fallback-openai"
-
-    def test_openclaw_nonzero_returncode_falls_back(self, client, mock_openai):
-        """When openclaw exits non-zero, should fall back to OpenAI even if stdout has bytes."""
-        err_proc = MagicMock()
-        err_proc.stdout = "{}"
-        err_proc.stderr = "boom"
-        err_proc.returncode = 2
-        with patch("src.api.app.subprocess.run", return_value=err_proc):
-            r = client.post("/zero-assistant", json={"text": "你好"})
-        assert r.status_code == 200
-        assert r.json()["meta"].get("source") == "fallback-openai"
-
-    def test_openclaw_stopreason_error_falls_back(self, client, mock_openai):
-        """Regression for exec-plan 005 (round 2): openclaw can return status:ok
-        and returncode:0 BUT meta.stopReason:'error', wrapping the upstream error
-        string into payloads[].text. Must not speak that text — fall back to OpenAI."""
-        err_proc = MagicMock()
-        err_proc.stdout = json.dumps({
-            "runId": "x",
-            "status": "ok",
-            "summary": "completed",
-            "result": {
-                "payloads": [{"text": "400 input item ID does not belong to this connection", "mediaUrl": None}],
-                "meta": {"stopReason": "error"},
-            },
-        })
-        err_proc.stderr = ""
-        err_proc.returncode = 0
-        with patch("src.api.app.subprocess.run", return_value=err_proc):
-            r = client.post("/zero-assistant", json={"text": "幫我查新北天氣"})
-        assert r.status_code == 200
-        data = r.json()
-        assert "400" not in data["reply_text"]
-        assert "input item ID" not in data["reply_text"]
-        assert data["meta"].get("source") == "fallback-openai"
+        assert r.json()["meta"]["source"] == "fallback-openai"
 
 
 # ---------------------------------------------------------------------------
@@ -191,15 +115,14 @@ class TestWebsearchRouting:
         assert data["reply_text"] == "新北今天晴天，25度。"
         mock_ws.assert_called_once()
 
-    def test_websearch_failure_falls_back_to_openclaw(self, client_with_websearch):
-        """If websearch raises, must fall through to existing openclaw path."""
+    def test_websearch_failure_falls_back_to_openai(self, client_with_websearch):
+        """If websearch raises, must fall through to plain OpenAI fallback."""
         with patch("src.api.websearch.run_websearch", side_effect=RuntimeError("boom")):
             r = client_with_websearch.post(
                 "/zero-assistant", json={"text": "幫我查新北天氣"}
             )
         assert r.status_code == 200
-        # mock_openclaw fixture returns a canned ok response
-        assert r.json()["meta"]["source"] == "openclaw-agent"
+        assert r.json()["meta"]["source"] == "fallback-openai"
 
     def test_chitchat_does_not_use_websearch(self, client_with_websearch):
         """Non-search queries must NOT touch websearch path."""
@@ -207,8 +130,7 @@ class TestWebsearchRouting:
             r = client_with_websearch.post("/zero-assistant", json={"text": "你好"})
         assert r.status_code == 200
         mock_ws.assert_not_called()
-        # Should go through openclaw (mocked) path
-        assert r.json()["meta"]["source"] == "openclaw-agent"
+        assert r.json()["meta"]["source"] == "fallback-openai"
 
     def test_disable_env_skips_websearch(self, client):
         """`client` fixture sets VOICEASSIST_DISABLE_WEBSEARCH=1 — must skip 006 path."""
@@ -216,3 +138,4 @@ class TestWebsearchRouting:
             r = client.post("/zero-assistant", json={"text": "幫我查新北天氣"})
         assert r.status_code == 200
         mock_ws.assert_not_called()
+        assert r.json()["meta"]["source"] == "fallback-openai"

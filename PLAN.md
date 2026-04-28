@@ -33,7 +33,7 @@ tests/                       Pytest harness
 | 9 | Photoframe smooth transitions (exec-plan 008) | ✅ Done |
 | 10 | VLM model bridge | 🔲 Planned |
 | 11 | Taiwan server racing fix | 🔲 Planned |
-| 12 | Drop OpenClaw fallback route (exec-plan 010) | 🔲 Planned |
+| 12 | Drop OpenClaw fallback route (exec-plan 010) | ✅ Done |
 
 ## Active Exec Plans
 
@@ -44,4 +44,5 @@ _(none active — ready for the next request)_
 See `.docs/exec-plans/done/` — includes 001 (env), 002 (vlm-bridge), 003
 (taiwan-racing-fix), 004 (voice-bridge-relative-import), 005 (search-error-reply),
 006 (llm-websearch-skill), 007 (restore-and-modularize-local-skills),
-008 (photoframe-smooth-transitions).
+008 (photoframe-smooth-transitions), 009 (docs-drop-openclaw-route),
+010 (remove-openclaw-route).

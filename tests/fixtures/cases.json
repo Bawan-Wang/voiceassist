@@ -2,30 +2,30 @@
   {
     "id": "weather_kaohsiung",
     "input": "高雄今天天氣如何",
-    "expected_source": "openclaw-agent",
+    "expected_source": "openai-websearch",
     "expected_search": true,
-    "description": "Weather query for non-Taipei city should go to openclaw-agent"
+    "description": "Weather query for non-Taipei city should go via OpenAI websearch"
   },
   {
     "id": "weather_generic",
     "input": "今天天氣怎麼樣",
-    "expected_source": "openclaw-agent",
+    "expected_source": "openai-websearch",
     "expected_search": true,
-    "description": "Generic weather query should go to openclaw-agent"
+    "description": "Generic weather query should go via OpenAI websearch"
   },
   {
     "id": "search_news",
     "input": "幫我查最新AI新聞",
-    "expected_source": "openclaw-agent",
+    "expected_source": "openai-websearch",
     "expected_search": true,
-    "description": "Search query should go to openclaw-agent with extended timeout"
+    "description": "Search query should go via OpenAI websearch"
   },
   {
     "id": "general_qa",
     "input": "你好",
-    "expected_source": "openclaw-agent",
+    "expected_source": "fallback-openai",
     "expected_search": false,
-    "description": "General Q&A should go to openclaw-agent with normal timeout"
+    "description": "General Q&A should hit the plain OpenAI fallback"
   },
   {
     "id": "open_photoframe",
