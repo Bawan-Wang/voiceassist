@@ -5,8 +5,7 @@
 - ✅ Exec-plan 005 done — OpenClaw error responses no longer spoken to the user.
 - ✅ Exec-plan 006 done — search/weather now uses OpenAI Responses API with the
   built-in `web_search` tool (3–8 s typical, vs 30–90 s on OpenClaw). On
-  failure the API now falls straight through to a plain OpenAI Responses
-  call (the OpenClaw subprocess fallback is being removed in exec-plan 010).
+  failure the API falls straight through to a plain OpenAI Responses call.
   Can still be force-disabled with `VOICEASSIST_DISABLE_WEBSEARCH=1`.
 - ✅ Exec-plan 007 done & live-verified — voice command "打開相框 / 相簿 /
   照片 / 切回兔兔" now routes through `src/api/skills/` registry; voice
@@ -24,10 +23,13 @@
   of being kill -9'd. Photoframe also touches `/tmp/photoframe.ready`
   so `open_photoframe` can verify a real successful launch (1.5s
   timeout). Backup at `~/workspace/photoframe.bak.20260425`.
-- 🟡 Active: exec-plans 009 (docs cleanup, this commit), 010 (drop OpenClaw
-  subprocess route from `src/api/app.py`), 011 (drop stale VLM / Taiwan-server
-  rows from `PLAN.md`). After 010 lands, OpenClaw is no longer a runtime
-  dependency for `/zero-assistant`.
+- ✅ Exec-plan 009 done — docs swept clean of OpenClaw fallback references
+  ahead of the runtime removal.
+- ✅ Exec-plan 010 done — OpenClaw subprocess route removed from
+  `src/api/app.py`; `/zero-assistant` is now strictly websearch →
+  fallback-openai. `ZERO_USE_OPENCLAW_AGENT` env var no longer read.
+- ✅ Exec-plan 011 done — stale `VLM model bridge` and `Taiwan server
+  racing fix` rows removed from `PLAN.md` Overall Progress table.
 
 ## Search/Weather Routing (post-006, post-010)
 
