@@ -30,6 +30,10 @@
   fallback-openai. `ZERO_USE_OPENCLAW_AGENT` env var no longer read.
 - ✅ Exec-plan 011 done — stale `VLM model bridge` and `Taiwan server
   racing fix` rows removed from `PLAN.md` Overall Progress table.
+- ✅ Exec-plan 012 done — deprecated hard-coded 相框/兔兔 routes and the
+  legacy `open_photoframe()` / `open_bunny_ui()` helpers removed from
+  `src/api/app.py` (~200 lines). `match_skill()` is now the only
+  local-skill dispatcher. `subprocess` and `time` imports also dropped.
 
 ## Search/Weather Routing (post-006, post-010)
 

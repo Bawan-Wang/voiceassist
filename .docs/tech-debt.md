@@ -22,11 +22,6 @@ When fixing an item, move it to the **Resolved** section with the commit hash.
 - **Issue:** The default voice is defined as `"verse"` but `rabbitctl.sh` always passes `--voice shimmer`, shadowing the default.
 - **Fix:** Change `DEFAULT_VOICE` to `"shimmer"` to match actual behaviour.
 
-### LOW — `PHOTOFRAME_SCRIPT` constant unused
-- **File:** `src/api/app.py`
-- **Issue:** `PHOTOFRAME_SCRIPT` is defined but never referenced (photoframe is launched via `PHOTO_CMD` instead).
-- **Fix:** Remove the constant.
-
 ### INFO — OpenClaw subprocess fallback removed in exec-plan 010
 - **Files:** `src/api/app.py`, `tests/conftest.py`, `tests/test_api.py`, `tests/fixtures/cases.json`
 - **Note:** The `ZERO_USE_OPENCLAW_AGENT` env var is no longer read; safe to drop from any deployment scripts / systemd units. The `openclaw` CLI itself can stay installed — it is harmless once unreferenced.
@@ -37,6 +32,7 @@ When fixing an item, move it to the **Resolved** section with the commit hash.
 
 | Commit | Item |
 |--------|------|
+| `012`  | `PHOTOFRAME_SCRIPT` constant removed alongside the deprecated 相框/兔兔 hard-coded routes |
 | `c16a9f8` | `BASE_DIR` in voice_bridge pointed to `bridge/` instead of repo root → `STATE_PATH` was writing to wrong location |
 | `c16a9f8` | `open_bunny_ui()` kill pattern missing `ui/` prefix |
 | `bfc6175` | openclaw `TimeoutExpired` was silently falling back to OpenAI instead of returning a clear error |

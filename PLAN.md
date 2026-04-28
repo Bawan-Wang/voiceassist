@@ -32,6 +32,7 @@ tests/                       Pytest harness
 | 8 | Restore + modularize local skills (exec-plan 007) | ✅ Done |
 | 9 | Photoframe smooth transitions (exec-plan 008) | ✅ Done |
 | 12 | Drop OpenClaw fallback route (exec-plan 010) | ✅ Done |
+| 13 | Drop deprecated hard-coded skill routes (exec-plan 012) | ✅ Done |
 
 ## Active Exec Plans
 
@@ -43,4 +44,5 @@ See `.docs/exec-plans/done/` — includes 001 (env), 002 (vlm-bridge), 003
 (taiwan-racing-fix), 004 (voice-bridge-relative-import), 005 (search-error-reply),
 006 (llm-websearch-skill), 007 (restore-and-modularize-local-skills),
 008 (photoframe-smooth-transitions), 009 (docs-drop-openclaw-route),
-010 (remove-openclaw-route), 011 (drop-stale-roadmap-rows).
+010 (remove-openclaw-route), 011 (drop-stale-roadmap-rows),
+012 (drop-deprecated-skill-routes).

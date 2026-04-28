@@ -3,8 +3,6 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any
 import os
 import re
-import subprocess
-import time
 from pathlib import Path
 
 app = FastAPI(title="Zero Assistant Bridge")
@@ -22,14 +20,6 @@ class AssistResponse(BaseModel):
 
 
 OPENAI_MODEL = os.environ.get("ZERO_OPENAI_MODEL", "gpt-4o-mini")
-VOICE_DIR = Path("/home/jh-pi/.openclaw/workspace/voiceassist")
-PHOTOFRAME_SCRIPT = str(VOICE_DIR / "run_photoframe.sh")
-BUNNY_PID = "/tmp/voiceassist_bunny.pid"
-PHOTO_PID = "/tmp/voiceassist_photo.pid"
-BUNNY_CMD = f"cd {VOICE_DIR} && DISPLAY=:0 nohup .venv/bin/python src/ui/assistant_ui.py >/tmp/bunny_ui.log 2>&1 & echo $! > {BUNNY_PID}"
-PHOTO_CMD = f"DISPLAY=:0 nohup /home/jh-pi/.openclaw/workspace/voiceassist/run_photoframe.sh >/tmp/photoframe.log 2>&1 & echo $! > {PHOTO_PID}"
-
-_LAST_ACTION = {"name": "", "ts": 0.0}
 
 
 def resolve_openai_key() -> str:
@@ -45,125 +35,6 @@ def resolve_openai_key() -> str:
     return ""
 
 
-def _debounce(action: str, seconds: float = 2.5) -> bool:
-    now = time.time()
-    if _LAST_ACTION["name"] == action and now - _LAST_ACTION["ts"] < seconds:
-        return True
-    _LAST_ACTION["name"] = action
-    _LAST_ACTION["ts"] = now
-    return False
-
-
-def _pids(pattern: str) -> list[int]:
-    r = subprocess.run(["bash", "-lc", f"pgrep -f '{pattern}'"], capture_output=True, text=True)
-    pids: list[int] = []
-    for line in (r.stdout or "").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            pids.append(int(line))
-        except ValueError:
-            pass
-    return pids
-
-
-def _count(pattern: str) -> int:
-    return len(_pids(pattern))
-
-
-def _kill_all(pattern: str) -> None:
-    for pid in _pids(pattern):
-        try:
-            os.kill(pid, 9)
-        except Exception:
-            pass
-
-
-def _kill_pidfile(path: str) -> None:
-    p = Path(path)
-    if not p.exists():
-        return
-    try:
-        pid = int(p.read_text().strip())
-        os.kill(pid, 9)
-    except Exception:
-        pass
-    try:
-        p.unlink(missing_ok=True)
-    except Exception:
-        pass
-
-
-def _alive_from_pidfile(path: str) -> bool:
-    p = Path(path)
-    if not p.exists():
-        return False
-    try:
-        pid = int(p.read_text().strip())
-        os.kill(pid, 0)
-        return True
-    except Exception:
-        return False
-
-
-def open_photoframe() -> str:
-    try:
-        if _debounce("open_photoframe"):
-            return "已收到，正在切換到相框。"
-
-        # already in desired state
-        if _alive_from_pidfile(PHOTO_PID):
-            return "相框已經是開啟狀態。"
-
-        _kill_pidfile(BUNNY_PID)
-        _kill_pidfile(PHOTO_PID)
-        _kill_all("python src/ui/assistant_ui.py")
-        _kill_all("run_photoframe.sh")
-        _kill_all("/home/jh-pi/workspace/photoframe/main.py")
-        time.sleep(0.2)
-        subprocess.run(["bash", "-lc", PHOTO_CMD], check=False)
-        time.sleep(0.6)
-
-        # enforce singleton
-        if _count("run_photoframe.sh") > 1:
-            _kill_all("run_photoframe.sh")
-            _kill_all("/home/jh-pi/workspace/photoframe/main.py")
-            subprocess.run(["bash", "-lc", PHOTO_CMD], check=False)
-
-        return "好的，已幫你打開相框。"
-    except Exception as exc:
-        return f"打開相框失敗：{exc}"
-
-
-def open_bunny_ui() -> str:
-    try:
-        if _debounce("open_bunny"):
-            return "已收到，正在切回兔兔。"
-
-        # already in desired state
-        if _alive_from_pidfile(BUNNY_PID):
-            return "兔兔畫面已經開啟。"
-
-        _kill_pidfile(PHOTO_PID)
-        _kill_pidfile(BUNNY_PID)
-        _kill_all("run_photoframe.sh")
-        _kill_all("/home/jh-pi/workspace/photoframe/main.py")
-        _kill_all("python src/ui/assistant_ui.py")
-        time.sleep(0.2)
-        subprocess.run(["bash", "-lc", BUNNY_CMD], check=False)
-        time.sleep(0.6)
-
-        # enforce singleton
-        if _count("python src/ui/assistant_ui.py") > 1:
-            _kill_all("python src/ui/assistant_ui.py")
-            subprocess.run(["bash", "-lc", BUNNY_CMD], check=False)
-
-        return "好的，已切回兔兔助理畫面。"
-    except Exception as exc:
-        return f"切回兔兔畫面失敗：{exc}"
-
-
 @app.post("/zero-assistant", response_model=AssistResponse)
 def zero_assistant(req: AssistRequest):
     text = (req.text or "").strip()
@@ -171,10 +42,9 @@ def zero_assistant(req: AssistRequest):
         raise HTTPException(status_code=400, detail="empty text")
 
     # ── Local skills (exec-plan 007) ────────────────────────────────────────
-    # The skills package is the canonical dispatcher. The legacy
-    # `open_photoframe()` / `open_bunny_ui()` helpers below are kept so
-    # external callers (and 005-era tests that patch them) still work,
-    # but the skill modules are the source of truth for new behavior.
+    # The skills package is the canonical (and only) local-skill dispatcher.
+    # The legacy hard-coded 相框/兔兔 fallback routes were removed in
+    # exec-plan 012 once 007 had been live-verified.
     try:
         from .skills import match_skill
         hit = match_skill(text)
@@ -185,19 +55,9 @@ def zero_assistant(req: AssistRequest):
                 meta={"source": "local-skill", "action": hit.NAME},
             )
     except Exception as exc:  # pylint: disable=broad-except
-        # Skill dispatcher must never break the API. Fall back to the
-        # deprecated hard-coded routes below.
+        # Skill dispatcher must never break the API. Fall through to the
+        # LLM path below.
         print(f"[api] skill dispatcher error: {exc}", flush=True)
-
-    # ── Deprecated hard-coded routes (TODO(007): remove after live verify) ──
-    tl = text.lower()
-    if ("打開" in text or "開啟" in text) and ("相框" in text or "photoframe" in tl):
-        msg = open_photoframe()
-        return AssistResponse(reply_text=msg, meta={"source": "local-command", "action": "open_photoframe"})
-
-    if ("打開" in text or "開啟" in text or "切回" in text) and ("兔兔" in text or "bunny" in tl):
-        msg = open_bunny_ui()
-        return AssistResponse(reply_text=msg, meta={"source": "local-command", "action": "open_bunny"})
 
     # LLM path: two-step routing.
     #   1. Search/browse/weather intents → OpenAI Responses + web_search tool
