@@ -1,19 +1,21 @@
 """Skill: bring the bunny assistant UI back to the foreground."""
 from __future__ import annotations
 
-import os
 import subprocess
 import time
-from pathlib import Path
 
 from . import _signal
+from ._paths import BUNNY_PID, PHOTO_PID, VOICE_DIR
+from ._process_utils import (
+    _alive_from_pidfile,
+    _count,
+    _kill_all,
+    _kill_pidfile,
+)
 from .tokens import matches_bunny
 
 NAME = "open_bunny"
 
-VOICE_DIR = Path("/home/jh-pi/.openclaw/workspace/voiceassist")
-BUNNY_PID = "/tmp/voiceassist_bunny.pid"
-PHOTO_PID = "/tmp/voiceassist_photo.pid"
 BUNNY_CMD = (
     f"cd {VOICE_DIR} && DISPLAY=:0 nohup .venv/bin/python src/ui/assistant_ui.py "
     f">/tmp/bunny_ui.log 2>&1 & echo $! > {BUNNY_PID}"
@@ -24,59 +26,6 @@ _LAST = {"ts": 0.0}
 
 def match(text: str) -> bool:
     return matches_bunny(text)
-
-
-def _pids(pattern: str) -> list[int]:
-    r = subprocess.run(["bash", "-lc", f"pgrep -f '{pattern}'"], capture_output=True, text=True)
-    pids: list[int] = []
-    for line in (r.stdout or "").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            pids.append(int(line))
-        except ValueError:
-            pass
-    return pids
-
-
-def _count(pattern: str) -> int:
-    return len(_pids(pattern))
-
-
-def _kill_all(pattern: str) -> None:
-    for pid in _pids(pattern):
-        try:
-            os.kill(pid, 9)
-        except Exception:
-            pass
-
-
-def _kill_pidfile(path: str) -> None:
-    p = Path(path)
-    if not p.exists():
-        return
-    try:
-        pid = int(p.read_text().strip())
-        os.kill(pid, 9)
-    except Exception:
-        pass
-    try:
-        p.unlink(missing_ok=True)
-    except Exception:
-        pass
-
-
-def _alive_from_pidfile(path: str) -> bool:
-    p = Path(path)
-    if not p.exists():
-        return False
-    try:
-        pid = int(p.read_text().strip())
-        os.kill(pid, 0)
-        return True
-    except Exception:
-        return False
 
 
 def run() -> str:

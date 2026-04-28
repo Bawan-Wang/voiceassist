@@ -32,6 +32,7 @@ When fixing an item, move it to the **Resolved** section with the commit hash.
 
 | Commit | Item |
 |--------|------|
+| `013`  | Duplicated process helpers (`_pids`/`_count`/`_kill_all`/`_kill_pidfile`/`_alive_from_pidfile`) and `VOICE_DIR`/`PHOTO_PID`/`BUNNY_PID` constants extracted to `src/api/skills/_process_utils.py` + `_paths.py`; duplicated `SIGNAL_PATH` literal in `src/ui/assistant_ui.py` replaced with import from `src.api.skills._signal` |
 | `012`  | `PHOTOFRAME_SCRIPT` constant removed alongside the deprecated 相框/兔兔 hard-coded routes |
 | `c16a9f8` | `BASE_DIR` in voice_bridge pointed to `bridge/` instead of repo root → `STATE_PATH` was writing to wrong location |
 | `c16a9f8` | `open_bunny_ui()` kill pattern missing `ui/` prefix |

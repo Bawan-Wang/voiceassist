@@ -19,6 +19,9 @@ from typing import Dict, Tuple
 import pygame
 import yaml
 
+# exec-plan 013: canonical SIGNAL_PATH owned by the skills package.
+from src.api.skills._signal import SIGNAL_PATH
+
 BASE_DIR = Path(__file__).parent
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG = PROJECT_DIR / "config.yaml"
@@ -293,7 +296,6 @@ def load_config(path: Path) -> Dict:
 
 
 # exec-plan 007: poll /tmp/voiceassist_signal.json for graceful exit signals.
-SIGNAL_PATH = Path("/tmp/voiceassist_signal.json")
 
 
 def _poll_bunny_should_exit() -> bool:

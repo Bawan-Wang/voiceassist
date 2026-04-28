@@ -69,3 +69,15 @@ search intent
 ## Tech Debt
 
 See `.docs/tech-debt.md` for the full list of known issues and fixes.
+
+## Recent Refactors
+
+- **013** ✅ — Skill process helpers (`_pids` / `_count` / `_kill_all` /
+  `_kill_pidfile` / `_alive_from_pidfile`) and shared path constants
+  (`VOICE_DIR` / `PHOTO_PID` / `BUNNY_PID`) extracted from
+  `open_photoframe.py` + `open_bunny.py` into
+  `src/api/skills/_process_utils.py` + `_paths.py`. The duplicated
+  `SIGNAL_PATH = Path("/tmp/voiceassist_signal.json")` literal in
+  `src/ui/assistant_ui.py` now imports from
+  `src.api.skills._signal`. Net −95 lines in tracked files; pytest 65
+  passed; live curl 4/4 OK.

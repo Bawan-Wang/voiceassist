@@ -102,11 +102,17 @@ class TestSignalFile:
 
 @pytest.fixture
 def mock_subprocess():
-    """Mock all subprocess calls inside the skills."""
+    """Mock all subprocess calls inside the skills.
+
+    After exec-plan 013 the pgrep helpers live in ``_process_utils``; the
+    skill modules still call ``subprocess.run`` directly for their launch
+    commands, so patch all three sites.
+    """
     pgrep_proc = MagicMock(stdout="", stderr="", returncode=0)
-    with patch("src.api.skills.open_photoframe.subprocess.run", return_value=pgrep_proc) as m1, \
+    with patch("src.api.skills._process_utils.subprocess.run", return_value=pgrep_proc) as m0, \
+         patch("src.api.skills.open_photoframe.subprocess.run", return_value=pgrep_proc) as m1, \
          patch("src.api.skills.open_bunny.subprocess.run", return_value=pgrep_proc) as m2:
-        yield m1, m2
+        yield m0, m1, m2
 
 
 @pytest.fixture(autouse=True)
