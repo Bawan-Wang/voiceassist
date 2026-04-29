@@ -16,6 +16,24 @@ VERB_TOKENS = {
     "open", "show", "switch",
 }
 
+SEARCH_TOKENS = (
+    "查", "搜尋", "搜索", "找", "查詢", "查一下", "幫我查", "最新", "新聞",
+    "網路上", "網頁", "資料", "天氣",
+    "weather", "search", "look up", "find", "browse",
+)
+
+
+def is_search_intent(text: str) -> bool:
+    """Return True if the command looks like a search/browse request.
+
+    Pure substring match — kept identical to the legacy implementations
+    in ``src/api/app.py`` and ``src/bridge/voice_bridge.py`` to avoid
+    behaviour drift during the refactor.
+    """
+    if not text:
+        return False
+    return any(tok in text for tok in SEARCH_TOKENS)
+
 
 def _has_any(text: str, tokens: set[str]) -> bool:
     if not text:

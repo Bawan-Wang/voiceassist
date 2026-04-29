@@ -105,24 +105,15 @@ class BridgeConfig:
     )
 
 
-_SEARCH_TOKENS = (
-    "查", "搜尋", "搜索", "找", "查詢", "查一下", "幫我查", "最新", "新聞",
-    "網路上", "網頁", "資料", "天氣", "weather", "search", "look up", "find", "browse",
-)
-
-
-def is_search_intent(text: str) -> bool:
-    """Return True if the command looks like a search/browse request."""
-    return any(tok in text for tok in _SEARCH_TOKENS)
-
-
-# exec-plan 007: lightweight local-skill detection. Imported lazily so that
-# unit tests / scripts that import voice_bridge for type checks do not pay
-# the cost. The function MUST stay cheap (string-only).
+# exec-plan 007 + 014: lightweight local-skill / search-intent detection.
+# Imported lazily so that unit tests / scripts that import voice_bridge for
+# type checks do not pay the cost. Both helpers MUST stay cheap (string-only).
 try:
-    from src.api.skills.tokens import is_local_skill  # noqa: F401
+    from src.api.skills.tokens import is_local_skill, is_search_intent  # noqa: F401
 except Exception:  # pylint: disable=broad-except
     def is_local_skill(text: str) -> bool:  # type: ignore[no-redef]
+        return False
+    def is_search_intent(text: str) -> bool:  # type: ignore[no-redef]
         return False
 
 
@@ -162,7 +153,7 @@ def apply_runtime_config(app_config: dict[str, Any]) -> dict[str, Any]:
     global DEFAULT_WAKE, DEFAULT_PLAYBACK, LLM_MODEL, API_URL
     global SEARCH_TIMEOUT_SEC, DIRECT_MAX_TOKENS, STREAM_MAX_TOKENS, SEARCH_REPLY_MAX_TOKENS
     global TRIM_CHARS, SENTENCE_ENDINGS, STREAM_CHUNK_CHARS
-    global LLM_SYSTEM_PROMPT, SPOKEN_REPLY_PROMPT, SEARCH_HINT, _SEARCH_TOKENS
+    global LLM_SYSTEM_PROMPT, SPOKEN_REPLY_PROMPT, SEARCH_HINT
 
     voice_config = app_config.get("voiceBridge", {})
     audio = voice_config.get("audio", {})
@@ -190,7 +181,6 @@ def apply_runtime_config(app_config: dict[str, Any]) -> dict[str, Any]:
     LLM_SYSTEM_PROMPT = prompts.get("llm_system", LLM_SYSTEM_PROMPT)
     SPOKEN_REPLY_PROMPT = prompts.get("spoken_reply", SPOKEN_REPLY_PROMPT)
     SEARCH_HINT = routing.get("search_hint", SEARCH_HINT)
-    _SEARCH_TOKENS = tuple(text_cfg.get("search_tokens", list(_SEARCH_TOKENS)))
 
     return voice_config
 

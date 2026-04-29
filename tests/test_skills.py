@@ -53,6 +53,19 @@ class TestTokens:
         assert not is_local_skill("今天天氣如何")
         assert not is_local_skill("")
 
+    @pytest.mark.parametrize("text,expected", [
+        ("幫我查台北天氣", True),
+        ("搜尋最新新聞", True),
+        ("找一下附近餐廳", True),
+        ("look up the weather", True),
+        ("你好", False),
+        ("打開相框", False),
+        ("", False),
+    ])
+    def test_is_search_intent(self, text, expected):
+        from src.api.skills.tokens import is_search_intent
+        assert is_search_intent(text) is expected
+
 
 # ── Dispatcher ─────────────────────────────────────────────────────────────
 

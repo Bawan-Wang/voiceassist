@@ -81,3 +81,11 @@ See `.docs/tech-debt.md` for the full list of known issues and fixes.
   `src/ui/assistant_ui.py` now imports from
   `src.api.skills._signal`. Net −95 lines in tracked files; pytest 65
   passed; live curl 4/4 OK.
+- **014** ✅ — `SEARCH_TOKENS` tuple + `is_search_intent()` consolidated
+  into `src/api/skills/tokens.py` (the dependency-free token module).
+  `src/api/app.py` and `src/bridge/voice_bridge.py` now import the
+  canonical helper instead of carrying byte-identical local copies.
+  Dead `_SEARCH_TOKENS` runtime-config override in
+  `apply_runtime_config()` removed (the yaml block was a no-op carbon
+  copy of the defaults). pytest 72 passed; import smoke confirms the
+  bridge symbol resolves to the canonical function object.

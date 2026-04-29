@@ -34,6 +34,7 @@ tests/                       Pytest harness
 | 12 | Drop OpenClaw fallback route (exec-plan 010) | ✅ Done |
 | 13 | Drop deprecated hard-coded skill routes (exec-plan 012) | ✅ Done |
 | 14 | Consolidate skill helpers + SIGNAL_PATH (exec-plan 013) | ✅ Done |
+| 15 | Unify SEARCH_TOKENS / is_search_intent (exec-plan 014) | ✅ Done |
 
 ## Active Exec Plans
 
@@ -46,4 +47,5 @@ See `.docs/exec-plans/done/` — includes 001 (env), 002 (vlm-bridge), 003
 006 (llm-websearch-skill), 007 (restore-and-modularize-local-skills),
 008 (photoframe-smooth-transitions), 009 (docs-drop-openclaw-route),
 010 (remove-openclaw-route), 011 (drop-stale-roadmap-rows),
-012 (drop-deprecated-skill-routes), 013 (consolidate-skill-helpers).
+012 (drop-deprecated-skill-routes), 013 (consolidate-skill-helpers),
+014 (unify-search-tokens).

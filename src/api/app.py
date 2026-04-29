@@ -64,11 +64,8 @@ def zero_assistant(req: AssistRequest):
     #      (`src/api/websearch.py`). This is the fast primary route (~3–8s).
     #   2. Everything else, plus websearch failures → plain OpenAI gpt-4o-mini
     #      Responses fallback at the bottom of this function.
-    SEARCH_TOKENS = (
-        "查", "搜尋", "搜索", "找", "查詢", "查一下", "幫我查", "最新", "新聞",
-        "網路上", "網頁", "資料", "天氣", "weather", "search", "look up", "find", "browse",
-    )
-    is_search = any(tok in text for tok in SEARCH_TOKENS)
+    from .skills.tokens import is_search_intent
+    is_search = is_search_intent(text)
 
     # Exec-plan 006: for search/weather, prefer fast OpenAI Responses + web_search tool.
     # On failure, fall through to the plain OpenAI fallback below.
