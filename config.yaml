@@ -23,10 +23,6 @@ assets:
   inner_ear_rgb: [255, 170, 200]
   outline_rgb: [70, 48, 40]
   cheek_rgb: [255, 140, 190]
-messageSource:
-  path: "data/demo_state.json"
-  poll_interval: 0.5
-
 voiceBridge:
   state_path: "data/demo_state.json"
 

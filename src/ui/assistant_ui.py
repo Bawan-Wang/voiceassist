@@ -339,7 +339,7 @@ def main() -> None:
     colors["background"] = hex_to_rgb(cfg["colors"]["background"])
 
     renderer = CuteFaceRenderer(screen, cfg)
-    feed = JsonStateFeed(PROJECT_DIR / cfg["messageSource"]["path"])
+    feed = JsonStateFeed(PROJECT_DIR / cfg["voiceBridge"]["state_path"])
 
     running = True
     start_time = time.time()

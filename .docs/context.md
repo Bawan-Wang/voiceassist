@@ -101,3 +101,15 @@ See `.docs/tech-debt.md` for the full list of known issues and fixes.
   Dead `voiceBridge.text.search_tokens` yaml block (014 leftover)
   dropped from both `config.yaml` and `runtime_config.DEFAULT_VOICEBRIDGE_CONFIG`.
   pytest 74 passed; live curl + mic sanity OK.
+- **016** ✅ — made `config.yaml` the single source of runtime truth.
+  Deleted `DEFAULT_VOICEBRIDGE_CONFIG` (~95-line dict) and `_deep_merge`
+  from `runtime_config.py`; `load_app_config()` now strict-loads
+  (file + top-level `voiceBridge` key required). `BridgeConfig` lost
+  every field default (35 required fields; bare `BridgeConfig()` now
+  raises `TypeError` by design). `build_bridge_config()` uses direct
+  `dict[k]` subscripting wrapped in a single try/except that converts
+  `KeyError → ValueError("config.yaml missing voiceBridge key: '<k>'")`.
+  `messageSource:` yaml block dropped — `assistant_ui.py` now reads
+  `voiceBridge.state_path`. ~90 duplicated literals across 4 layers
+  collapsed to 1. pytest 76 passed (+2 new strict-mode tests); live
+  restart confirmed 3 PIDs up + voice_bridge `Ready` log clean.
