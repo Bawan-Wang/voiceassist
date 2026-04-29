@@ -35,6 +35,7 @@ tests/                       Pytest harness
 | 13 | Drop deprecated hard-coded skill routes (exec-plan 012) | ✅ Done |
 | 14 | Consolidate skill helpers + SIGNAL_PATH (exec-plan 013) | ✅ Done |
 | 15 | Unify SEARCH_TOKENS / is_search_intent (exec-plan 014) | ✅ Done |
+| 16 | Collapse module-level config globals into BridgeConfig (exec-plan 015) | ✅ Done |
 
 ## Active Exec Plans
 
@@ -48,4 +49,4 @@ See `.docs/exec-plans/done/` — includes 001 (env), 002 (vlm-bridge), 003
 008 (photoframe-smooth-transitions), 009 (docs-drop-openclaw-route),
 010 (remove-openclaw-route), 011 (drop-stale-roadmap-rows),
 012 (drop-deprecated-skill-routes), 013 (consolidate-skill-helpers),
-014 (unify-search-tokens).
+014 (unify-search-tokens), 015 (collapse-config-globals).

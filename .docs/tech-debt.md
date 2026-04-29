@@ -32,6 +32,7 @@ When fixing an item, move it to the **Resolved** section with the commit hash.
 
 | Commit | Item |
 |--------|------|
+| `015`  | Triplicated runtime config (17 module-level globals in `voice_bridge.py` + `DEFAULT_VOICEBRIDGE_CONFIG` in `runtime_config.py` + `voiceBridge:` block in `config.yaml`); collapsed by adding 9 new fields to `BridgeConfig`, deleting `apply_runtime_config()`, and giving `update_state()` an explicit `state_path` arg. Dead `voiceBridge.text.search_tokens` yaml block also dropped. `BridgeConfig` is now the single runtime-truth source |
 | `014`  | `SEARCH_TOKENS` tuple + `is_search_intent()` were duplicated byte-for-byte in `src/api/app.py` and `src/bridge/voice_bridge.py`; consolidated into `src/api/skills/tokens.py`. Dead `_SEARCH_TOKENS` runtime-config override in `apply_runtime_config()` removed (the yaml `voiceBridge.text.search_tokens` block became a no-op and can be deleted in a future cleanup) |
 | `013`  | Duplicated process helpers (`_pids`/`_count`/`_kill_all`/`_kill_pidfile`/`_alive_from_pidfile`) and `VOICE_DIR`/`PHOTO_PID`/`BUNNY_PID` constants extracted to `src/api/skills/_process_utils.py` + `_paths.py`; duplicated `SIGNAL_PATH` literal in `src/ui/assistant_ui.py` replaced with import from `src.api.skills._signal` |
 | `012`  | `PHOTOFRAME_SCRIPT` constant removed alongside the deprecated 相框/兔兔 hard-coded routes |

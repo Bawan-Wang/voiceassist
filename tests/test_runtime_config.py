@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.bridge.runtime_config import load_app_config
-from src.bridge.voice_bridge import apply_runtime_config, build_bridge_config
+from src.bridge.voice_bridge import build_bridge_config, update_state
 
 
 def test_build_bridge_config_uses_active_provider_selection(tmp_path):
@@ -51,7 +51,7 @@ voiceBridge:
     )
 
     _, app_config = load_app_config(config_path)
-    voice_config = apply_runtime_config(app_config)
+    voice_config = app_config["voiceBridge"]
     args = argparse.Namespace(
         config=str(config_path),
         input_device=None,
@@ -68,3 +68,48 @@ voiceBridge:
     assert cfg.tts_provider_type == "piper_local"
     assert cfg.tts_provider_config["model_path"] == "models/alt-voice.onnx"
     assert cfg.wake_variants[0] == "測試助理"
+
+
+def test_build_bridge_config_populates_runtime_strings(tmp_path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+voiceBridge:
+  routing:
+    llm_model: gpt-4-test
+  prompts:
+    llm_system: "test system prompt"
+    spoken_reply: "test spoken prompt"
+  text:
+    trim_chars: "_"
+    sentence_endings: "."
+    stream_chunk_chars: 7
+""",
+        encoding="utf-8",
+    )
+    _, app_config = load_app_config(config_path)
+    args = argparse.Namespace(
+        config=str(config_path),
+        input_device=None,
+        playback_device=None,
+        wake=None,
+    )
+    cfg = build_bridge_config(app_config["voiceBridge"], args)
+    assert cfg.llm_model == "gpt-4-test"
+    assert cfg.llm_system_prompt == "test system prompt"
+    assert cfg.spoken_reply_prompt == "test spoken prompt"
+    assert cfg.trim_chars == "_"
+    assert cfg.sentence_endings == "."
+    assert cfg.stream_chunk_chars == 7
+
+
+def test_update_state_round_trip(tmp_path):
+    import json
+
+    state_path = tmp_path / "state.json"
+    update_state(state_path, "listening", user_text="hi", assistant_text="hello")
+    payload = json.loads(state_path.read_text())
+    assert payload["phase"] == "listening"
+    assert payload["userText"] == "hi"
+    assert payload["assistantText"] == "hello"
+    assert "lastUpdate" in payload

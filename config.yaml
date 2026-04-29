@@ -78,25 +78,6 @@ voiceBridge:
     trim_chars: " ，、。!?~'\""
     sentence_endings: "，,。！？!?；;：:\n"
     stream_chunk_chars: 24
-    search_tokens:
-      - "查"
-      - "搜尋"
-      - "搜索"
-      - "找"
-      - "查詢"
-      - "查一下"
-      - "幫我查"
-      - "最新"
-      - "新聞"
-      - "網路上"
-      - "網頁"
-      - "資料"
-      - "天氣"
-      - "weather"
-      - "search"
-      - "look up"
-      - "find"
-      - "browse"
 
   vad:
     provider: "silero"

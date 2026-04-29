@@ -89,3 +89,15 @@ See `.docs/tech-debt.md` for the full list of known issues and fixes.
   `apply_runtime_config()` removed (the yaml block was a no-op carbon
   copy of the defaults). pytest 72 passed; import smoke confirms the
   bridge symbol resolves to the canonical function object.
+- **015** ✅ — collapsed module-level config globals into
+  `BridgeConfig`. `voice_bridge.py` lost 17 module-level constants and
+  the 35-line `apply_runtime_config()` global-mutator; `BridgeConfig`
+  gained 9 new fields (`state_path`, `silero_model_path/url`,
+  `llm_model`, `llm_system_prompt`, `spoken_reply_prompt`,
+  `trim_chars`, `sentence_endings`, `stream_chunk_chars`).
+  `update_state()` now takes `state_path` as the first arg.
+  `build_arg_parser()` receives `default_playback`/`default_wake` from
+  `main()`, so the argparse layer no longer touches L1 globals.
+  Dead `voiceBridge.text.search_tokens` yaml block (014 leftover)
+  dropped from both `config.yaml` and `runtime_config.DEFAULT_VOICEBRIDGE_CONFIG`.
+  pytest 74 passed; live curl + mic sanity OK.
