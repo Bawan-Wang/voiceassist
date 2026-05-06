@@ -48,6 +48,9 @@ cd /home/jh-pi/.openclaw/workspace/voiceassist
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
+
+# For local tests / CI tooling
+python -m pip install -r requirements-dev.txt
 ```
 
 Set your OpenAI API key in `~/.bashrc`:

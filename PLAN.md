@@ -37,6 +37,7 @@ tests/                       Pytest harness
 | 15 | Unify SEARCH_TOKENS / is_search_intent (exec-plan 014) | ✅ Done |
 | 16 | Collapse module-level config globals into BridgeConfig (exec-plan 015) | ✅ Done |
 | 17 | Collapse config to yaml-only source of truth (exec-plan 016) | ✅ Done |
+| 18 | Fix dependency manifests + clean-install baseline (exec-plan 017) | ✅ Done |
 
 ## Active Exec Plans
 
@@ -51,4 +52,4 @@ See `.docs/exec-plans/done/` — includes 001 (env), 002 (vlm-bridge), 003
 010 (remove-openclaw-route), 011 (drop-stale-roadmap-rows),
 012 (drop-deprecated-skill-routes), 013 (consolidate-skill-helpers),
 014 (unify-search-tokens), 015 (collapse-config-globals),
-016 (yaml-source-of-truth).
+016 (yaml-source-of-truth), 017 (dependency-manifests-clean-install).

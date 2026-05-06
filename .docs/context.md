@@ -113,3 +113,10 @@ See `.docs/tech-debt.md` for the full list of known issues and fixes.
   `voiceBridge.state_path`. ~90 duplicated literals across 4 layers
   collapsed to 1. pytest 76 passed (+2 new strict-mode tests); live
   restart confirmed 3 PIDs up + voice_bridge `Ready` log clean.
+- **017** ✅ — normalized the dependency manifests to match direct runtime
+  imports and entrypoints. `requirements.txt` now explicitly declares
+  `fastapi`, `pydantic`, `requests`, and `uvicorn` alongside the existing
+  audio / model / OpenAI packages; `README.md` now documents installing
+  `requirements-dev.txt` on top of runtime requirements for local tests
+  and CI. Verified with `.venv/bin/pytest -q` = 76 passed and a fresh
+  throwaway venv install + pytest = 76 passed.

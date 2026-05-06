@@ -1,6 +1,6 @@
 # 017 — Fix Dependency Manifests and Establish a Clean-Install Baseline
 
-## Status: Draft 🟡 (not started)
+## Status: Done ✅ (clean-install verified 2026-05-06)
 
 ## Motivation
 
