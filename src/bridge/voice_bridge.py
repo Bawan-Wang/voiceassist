@@ -34,9 +34,15 @@ from typing import Any, Deque, Optional
 
 import numpy as np
 import onnxruntime
-import sounddevice as sd
 import webrtcvad
 from openai import OpenAI
+
+try:
+    import sounddevice as sd
+    _SOUNDDEVICE_IMPORT_ERROR: Optional[BaseException] = None
+except (ImportError, OSError) as exc:
+    sd = None  # type: ignore[assignment]
+    _SOUNDDEVICE_IMPORT_ERROR = exc
 
 from .providers import PiperTextToSpeechProvider, SherpaOnnxSpeechToTextProvider
 from .runtime_config import get_selected_provider, load_app_config, resolve_project_path
@@ -196,6 +202,14 @@ def build_bridge_config(voice_config: dict[str, Any], args: argparse.Namespace) 
     return cfg
 
 
+def _require_sounddevice() -> Any:
+    if sd is None:
+        raise RuntimeError(
+            "sounddevice is unavailable; install PortAudio and the Python sounddevice package"
+        ) from _SOUNDDEVICE_IMPORT_ERROR
+    return sd
+
+
 class VoiceBridge:
     def __init__(self, cfg: BridgeConfig, client: OpenAI) -> None:
         self.cfg = cfg
@@ -243,11 +257,12 @@ class VoiceBridge:
     def run(self) -> None:
         signal.signal(signal.SIGINT, self._handle_stop)
         signal.signal(signal.SIGTERM, self._handle_stop)
-        sd.default.samplerate = self.cfg.sample_rate
-        sd.default.channels = 1
-        sd.default.dtype = "int16"
+        sounddevice = _require_sounddevice()
+        sounddevice.default.samplerate = self.cfg.sample_rate
+        sounddevice.default.channels = 1
+        sounddevice.default.dtype = "int16"
         if self.cfg.input_device is not None:
-            sd.default.device = (self.cfg.input_device, None)
+            sounddevice.default.device = (self.cfg.input_device, None)
 
         print("[voice_bridge] Ready. Say '兔兔助理 ...' to wake up Zero.")
         while self._running:
@@ -411,7 +426,8 @@ class VoiceBridge:
         last_voice = time.time()
         silero_state = _SileroVADState(self.cfg.silero_vote_window) if self._silero_session is not None else None
 
-        with sd.RawInputStream(blocksize=self.frame_bytes // 2, device=self.cfg.input_device) as stream:
+        sounddevice = _require_sounddevice()
+        with sounddevice.RawInputStream(blocksize=self.frame_bytes // 2, device=self.cfg.input_device) as stream:
             while self._running:
                 frame, _ = stream.read(self.frame_bytes // 2)
                 if not frame:
