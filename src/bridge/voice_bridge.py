@@ -32,11 +32,6 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Deque, Optional
 
-import numpy as np
-import onnxruntime
-import webrtcvad
-from openai import OpenAI
-
 try:
     import sounddevice as sd
     _SOUNDDEVICE_IMPORT_ERROR: Optional[BaseException] = None
@@ -47,6 +42,7 @@ except (ImportError, OSError) as exc:
 from .runtime_config import get_selected_provider, load_app_config, resolve_project_path
 
 if TYPE_CHECKING:
+    from openai import OpenAI
     from .providers import PiperTextToSpeechProvider, SherpaOnnxSpeechToTextProvider
 
 BASE_DIR = Path(__file__).resolve().parents[2]  # repo root (voiceassist/)
@@ -135,6 +131,8 @@ def ensure_silero_model(model_path: Path, model_url: str) -> Optional[Path]:
 
 class _SileroVADState:
     def __init__(self, vote_window: int) -> None:
+        import numpy as np
+
         self.state = np.zeros((2, 1, 128), dtype=np.float32)
         self.context = np.zeros((1, 64), dtype=np.float32)
         self.audio_buffer = bytearray()
@@ -214,6 +212,9 @@ def _require_sounddevice() -> Any:
 
 class VoiceBridge:
     def __init__(self, cfg: BridgeConfig, client: OpenAI) -> None:
+        import onnxruntime
+        import webrtcvad
+
         self.cfg = cfg
         self.client = client
         self.stt_provider = self._create_stt_provider()
@@ -224,7 +225,7 @@ class VoiceBridge:
         self._running = True
         self._pending_wake_until: Optional[datetime] = None
         self._last_auto_command_ts = 0.0
-        self._silero_session: Optional[onnxruntime.InferenceSession] = None
+        self._silero_session: Optional[Any] = None
 
         silero_model_path = ensure_silero_model(self.cfg.silero_model_path, self.cfg.silero_model_url)
         if silero_model_path is not None and silero_model_path.exists():
@@ -465,6 +466,8 @@ class VoiceBridge:
         return b""
 
     def _frame_has_speech(self, pcm_bytes: bytes, silero_state: Optional[_SileroVADState]) -> bool:
+        import numpy as np
+
         if self._silero_session is None or silero_state is None:
             return self.webrtc_vad.is_speech(pcm_bytes, self.cfg.sample_rate)
 
@@ -783,6 +786,8 @@ def build_arg_parser(
 
 
 def main() -> None:
+    from openai import OpenAI
+
     if "OPENAI_API_KEY" not in os.environ:
         print("Please set OPENAI_API_KEY in your environment.")
         sys.exit(1)
