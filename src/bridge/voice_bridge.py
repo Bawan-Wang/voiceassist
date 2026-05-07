@@ -30,7 +30,7 @@ import difflib
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Any, Deque, Optional
+from typing import TYPE_CHECKING, Any, Deque, Optional
 
 import numpy as np
 import onnxruntime
@@ -44,8 +44,10 @@ except (ImportError, OSError) as exc:
     sd = None  # type: ignore[assignment]
     _SOUNDDEVICE_IMPORT_ERROR = exc
 
-from .providers import PiperTextToSpeechProvider, SherpaOnnxSpeechToTextProvider
 from .runtime_config import get_selected_provider, load_app_config, resolve_project_path
+
+if TYPE_CHECKING:
+    from .providers import PiperTextToSpeechProvider, SherpaOnnxSpeechToTextProvider
 
 BASE_DIR = Path(__file__).resolve().parents[2]  # repo root (voiceassist/)
 DEFAULT_CONFIG_PATH = BASE_DIR / "config.yaml"
@@ -240,6 +242,8 @@ class VoiceBridge:
                 print(f"[voice_bridge] Silero VAD init failed, fallback to WebRTC: {exc}")
 
     def _create_stt_provider(self) -> SherpaOnnxSpeechToTextProvider:
+        from .providers import SherpaOnnxSpeechToTextProvider
+
         provider_type = self.cfg.stt_provider_type.lower()
         if provider_type == "sherpa_onnx_local":
             return SherpaOnnxSpeechToTextProvider(
@@ -249,6 +253,8 @@ class VoiceBridge:
         raise ValueError(f"Unsupported STT provider type: {self.cfg.stt_provider_type}")
 
     def _create_tts_provider(self) -> PiperTextToSpeechProvider:
+        from .providers import PiperTextToSpeechProvider
+
         provider_type = self.cfg.tts_provider_type.lower()
         if provider_type == "piper_local":
             return PiperTextToSpeechProvider(**self.cfg.tts_provider_config)
