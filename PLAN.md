@@ -38,10 +38,11 @@ tests/                       Pytest harness
 | 16 | Collapse module-level config globals into BridgeConfig (exec-plan 015) | ✅ Done |
 | 17 | Collapse config to yaml-only source of truth (exec-plan 016) | ✅ Done |
 | 18 | Fix dependency manifests + clean-install baseline (exec-plan 017) | ✅ Done |
+| 19 | Add GitHub-hosted CI + code scanning baseline (exec-plan 018A) | ✅ Done |
 
 ## Active Exec Plans
 
-_(none active — ready for the next request)_
+- `018B` — Raspberry Pi self-hosted hardware smoke workflow (`draft`, not started)
 
 ## Done (archived)
 
@@ -52,4 +53,5 @@ See `.docs/exec-plans/done/` — includes 001 (env), 002 (vlm-bridge), 003
 010 (remove-openclaw-route), 011 (drop-stale-roadmap-rows),
 012 (drop-deprecated-skill-routes), 013 (consolidate-skill-helpers),
 014 (unify-search-tokens), 015 (collapse-config-globals),
-016 (yaml-source-of-truth), 017 (dependency-manifests-clean-install).
+016 (yaml-source-of-truth), 017 (dependency-manifests-clean-install),
+018A (github-hosted-ci-and-code-scanning-baseline).

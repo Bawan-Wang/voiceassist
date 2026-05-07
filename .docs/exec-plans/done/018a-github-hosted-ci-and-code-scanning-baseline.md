@@ -1,6 +1,6 @@
 # 018A — Add GitHub-Hosted CI and Code Scanning Baseline
 
-## Status: Draft 🟡 (not started)
+## Status: Done ✅ (workflows and docs landed 2026-05-07)
 
 ## Motivation
 
@@ -12,13 +12,13 @@ At the same time, the current test suite is already good enough to
 support a first CI baseline:
 
 - API and routing behavior are covered in
-  [tests/test_api.py](../../tests/test_api.py)
+  [tests/test_api.py](../../../tests/test_api.py)
 - config and state-file behavior are covered in
-  [tests/test_runtime_config.py](../../tests/test_runtime_config.py)
+  [tests/test_runtime_config.py](../../../tests/test_runtime_config.py)
 - local-skill routing behavior is covered in
-  [tests/test_voice_bridge_local_routing.py](../../tests/test_voice_bridge_local_routing.py)
+  [tests/test_voice_bridge_local_routing.py](../../../tests/test_voice_bridge_local_routing.py)
 - external OpenAI behavior is already mocked in
-  [tests/conftest.py](../../tests/conftest.py)
+  [tests/conftest.py](../../../tests/conftest.py)
 
 The purpose of 018A is to turn that existing coverage into a portable,
 GitHub-hosted CI baseline that can:
@@ -80,7 +80,7 @@ hosted Linux runner:
 Explicitly exclude from 018A:
 
 - `rabbitctl.sh start`
-- live UI startup from [src/ui/assistant_ui.py](../../src/ui/assistant_ui.py)
+- live UI startup from [src/ui/assistant_ui.py](../../../src/ui/assistant_ui.py)
 - hardware audio I/O
 - photoframe integration smoke
 
@@ -157,10 +157,10 @@ Language scope:
 
 The repo characteristics that justify CodeQL here are already present:
 
-- FastAPI request handling in [src/api/app.py](../../src/api/app.py)
+- FastAPI request handling in [src/api/app.py](../../../src/api/app.py)
 - subprocess and process-management behavior under
-  [src/api/skills/](../../src/api/skills/)
-- file and network I/O in [src/bridge/voice_bridge.py](../../src/bridge/voice_bridge.py)
+  [src/api/skills/](../../../src/api/skills/)
+- file and network I/O in [src/bridge/voice_bridge.py](../../../src/bridge/voice_bridge.py)
 
 ### Step 8 — Keep CodeQL independent from hardware assumptions
 
@@ -188,8 +188,8 @@ Update docs so contributors understand:
 - which scans are informational vs blocking
 - that hosted CI does **not** prove Raspberry Pi hardware behavior
 
-Prefer updating [README.md](../../README.md) and/or
-[AGENTS.md](../../AGENTS.md) only where this contract is currently
+Prefer updating [README.md](../../../README.md) and/or
+[AGENTS.md](../../../AGENTS.md) only where this contract is currently
 missing.
 
 ---

@@ -2,6 +2,12 @@
 
 ## Current Focus
 
+- ✅ Exec-plan 018A done — GitHub-hosted workflows now exist under
+  `.github/workflows/`: `ci.yml` installs `requirements.txt` +
+  `requirements-dev.txt`, runs `pytest -q`, then runs informational
+  `pip-audit` and `gitleaks`; `codeql.yml` adds hosted Python CodeQL
+  analysis on pull requests and pushes to `main`. This is the portable
+  PR baseline only; Raspberry Pi hardware smoke remains deferred to 018B.
 - ✅ Exec-plan 005 done — OpenClaw error responses no longer spoken to the user.
 - ✅ Exec-plan 006 done — search/weather now uses OpenAI Responses API with the
   built-in `web_search` tool (3–8 s typical, vs 30–90 s on OpenClaw). On

@@ -63,6 +63,15 @@ On first run, `voiceassist` automatically downloads local model assets into
 `models/` (`Silero VAD`, `Sherpa-ONNX`, and `Piper`). These files are **not**
 committed to git.
 
+## Hosted CI
+
+GitHub Actions now provides the portable CI baseline under `.github/workflows/`:
+
+- `CI` runs on `ubuntu-latest`, installs `requirements.txt` plus `requirements-dev.txt`, runs `pytest -q`, then runs `pip-audit` and `gitleaks` as informational scans while the initial signal is being tuned.
+- `CodeQL` runs GitHub-hosted Python static analysis for pull requests and pushes to `main`.
+
+These workflows are the intended pull-request baseline once they have been stabilized on the default branch. They do **not** validate Raspberry Pi-specific startup, audio, display, photoframe launch, or other hardware behavior; that follow-up remains tracked under 018B.
+
 ## Usage
 
 ```bash
