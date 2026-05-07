@@ -50,6 +50,7 @@ def client(mock_openai, monkeypatch):
     path should use the `client_with_websearch` fixture instead.
     """
     monkeypatch.setenv("VOICEASSIST_DISABLE_WEBSEARCH", "1")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
     from src.api.app import app
     return TestClient(app)
 
@@ -58,5 +59,6 @@ def client(mock_openai, monkeypatch):
 def client_with_websearch(mock_openai, monkeypatch):
     """FastAPI TestClient with websearch ENABLED (006 path active)."""
     monkeypatch.delenv("VOICEASSIST_DISABLE_WEBSEARCH", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
     from src.api.app import app
     return TestClient(app)
