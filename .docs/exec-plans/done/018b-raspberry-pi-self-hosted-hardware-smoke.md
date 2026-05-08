@@ -1,6 +1,20 @@
 # 018B — Add Raspberry Pi Self-Hosted Hardware Smoke Workflow
 
-## Status: Draft 🟡 (not started)
+## Status: Done ✅ (workflow landed and local on-device smoke passed 2026-05-08)
+
+## Completion Notes
+
+- `.github/workflows/hardware-smoke.yml` adds a manual-only, non-blocking
+  hardware smoke workflow.
+- The workflow targets the dedicated Pi runner labels `self-hosted`, `linux`,
+  `ARM64`, and `voiceassist-pi`.
+- It runs only against the canonical checkout at
+  `/home/jh-pi/.openclaw/workspace/voiceassist`, rejects a dirty worktree,
+  serializes runs with concurrency, and uploads `/tmp` logs on failure.
+- Local on-device validation passed on 2026-05-08: `load_app_config("config.yaml")`
+  succeeded, `rabbitctl.sh start` brought up API / bunny UI / voice bridge,
+  expected `/tmp` logs were created, and `rabbitctl.sh stop` returned the host
+  to a clean stopped state.
 
 ## Motivation
 
@@ -8,19 +22,19 @@
 necessary, but it does not exercise the parts of this repository that
 actually depend on Raspberry Pi hardware and local system integration:
 
-- [rabbitctl.sh](../../rabbitctl.sh) orchestrates the API, bunny UI, and
+- [rabbitctl.sh](../../../rabbitctl.sh) orchestrates the API, bunny UI, and
   voice bridge processes.
-- [src/bridge/voice_bridge.py](../../src/bridge/voice_bridge.py)
+- [src/bridge/voice_bridge.py](../../../src/bridge/voice_bridge.py)
   depends on audio-device, model, and playback behavior that hosted CI
   cannot validate.
-- [src/api/skills/open_photoframe.py](../../src/api/skills/open_photoframe.py)
-  and [src/api/skills/open_bunny.py](../../src/api/skills/open_bunny.py)
+- [src/api/skills/open_photoframe.py](../../../src/api/skills/open_photoframe.py)
+  and [src/api/skills/open_bunny.py](../../../src/api/skills/open_bunny.py)
   control external processes and UI transitions.
 
 There is also an important path constraint: several runtime helpers are
 still anchored to the current device filesystem layout, including
-[rabbitctl.sh](../../rabbitctl.sh) and
-[src/api/skills/_paths.py](../../src/api/skills/_paths.py). That means a
+[rabbitctl.sh](../../../rabbitctl.sh) and
+[src/api/skills/_paths.py](../../../src/api/skills/_paths.py). That means a
 hardware workflow cannot be treated like a generic hosted checkout yet;
 it has to run on a trusted Pi environment that matches the current path
 contract.
@@ -57,7 +71,7 @@ Out of scope:
 - [ ] 018A merged and stable on `main`.
 - [ ] A trusted Raspberry Pi self-hosted runner is registered and labeled.
 - [ ] The device can already run the repo manually through
-      [rabbitctl.sh](../../rabbitctl.sh).
+      [rabbitctl.sh](../../../rabbitctl.sh).
 - [ ] `rabbitctl.sh status` is clean before the workflow starts.
 
 ---
@@ -121,9 +135,9 @@ The smoke sequence should stay intentionally small:
 
 1. confirm repo path assumptions
 2. confirm config loads
-3. start services via [rabbitctl.sh](../../rabbitctl.sh)
+3. start services via [rabbitctl.sh](../../../rabbitctl.sh)
 4. verify expected processes are up
-5. stop services via [rabbitctl.sh](../../rabbitctl.sh)
+5. stop services via [rabbitctl.sh](../../../rabbitctl.sh)
 6. verify cleanup succeeded
 
 If command complexity grows, move it into a dedicated script under a
@@ -133,7 +147,7 @@ future `scripts/ci/` path.
 
 Use process health and known artifacts rather than interactive audio:
 
-- [rabbitctl.sh](../../rabbitctl.sh) status output
+- [rabbitctl.sh](../../../rabbitctl.sh) status output
 - expected log files under `/tmp/`
 - optional ready-file checks where they already exist
 
@@ -213,7 +227,7 @@ Until then, 018A remains the only merge-gating baseline.
 Expected outcomes:
 
 - manual dispatch completes on the Pi runner without hanging the device
-- [rabbitctl.sh](../../rabbitctl.sh) can start and stop the managed
+- [rabbitctl.sh](../../../rabbitctl.sh) can start and stop the managed
   services inside the workflow
 - failures upload enough logs to diagnose the failing layer
 - overlapping runs are serialized or rejected cleanly

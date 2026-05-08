@@ -69,8 +69,9 @@ GitHub Actions now provides the portable CI baseline under `.github/workflows/`:
 
 - `CI` runs on `ubuntu-latest`, installs `requirements.txt` plus `requirements-dev.txt`, runs `pytest -q`, then runs `pip-audit` and `gitleaks` as informational scans while the initial signal is being tuned.
 - `CodeQL` runs GitHub-hosted Python static analysis for pull requests and pushes to `main`.
+- `Hardware Smoke` is a manual `workflow_dispatch` job on the dedicated self-hosted Pi runner (`self-hosted`, `linux`, `ARM64`, `voiceassist-pi`). It runs against `/home/jh-pi/.openclaw/workspace/voiceassist`, validates config load plus `rabbitctl.sh` start / status / stop, serializes runs with concurrency, and uploads `/tmp` logs on failure.
 
-These workflows are the intended pull-request baseline once they have been stabilized on the default branch. They do **not** validate Raspberry Pi-specific startup, audio, display, photoframe launch, or other hardware behavior; that follow-up remains tracked under 018B.
+`CI` and `CodeQL` are the intended pull-request baseline once stabilized on the default branch. `Hardware Smoke` is intentionally manual and non-blocking so the dedicated Pi device remains under explicit operator control.
 
 ## Usage
 

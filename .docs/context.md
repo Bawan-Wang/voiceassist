@@ -2,12 +2,21 @@
 
 ## Current Focus
 
+- ✅ Exec-plan 018B done — `.github/workflows/hardware-smoke.yml` now adds a
+  manual, non-blocking Raspberry Pi hardware smoke workflow on the dedicated
+  runner labels `self-hosted`, `linux`, `ARM64`, `voiceassist-pi`. It
+  serializes runs with concurrency, executes against the canonical checkout at
+  `/home/jh-pi/.openclaw/workspace/voiceassist`, validates config load plus
+  `rabbitctl.sh` start / status / stop, and uploads `/tmp` logs on failure.
+  Local on-device smoke passed on 2026-05-08: config loaded, all three managed
+  processes came up, expected logs were created, and teardown returned to a
+  clean stopped state.
 - ✅ Exec-plan 018A done — GitHub-hosted workflows now exist under
   `.github/workflows/`: `ci.yml` installs `requirements.txt` +
   `requirements-dev.txt`, runs `pytest -q`, then runs informational
   `pip-audit` and `gitleaks`; `codeql.yml` adds hosted Python CodeQL
-  analysis on pull requests and pushes to `main`. This is the portable
-  PR baseline only; Raspberry Pi hardware smoke remains deferred to 018B.
+  analysis on pull requests and pushes to `main`. This remains the portable
+  PR baseline; 018B now covers the manual Pi-only smoke path separately.
 - ✅ Exec-plan 005 done — OpenClaw error responses no longer spoken to the user.
 - ✅ Exec-plan 006 done — search/weather now uses OpenAI Responses API with the
   built-in `web_search` tool (3–8 s typical, vs 30–90 s on OpenClaw). On
@@ -58,9 +67,10 @@ search intent
 - **Platform**: Raspberry Pi OS (ARM64)
 - **Python**: 3.11 via `.venv/`
 - **Audio**: PipeWire / PulseAudio — input device auto-detected or set via `RABBIT_INPUT_DEVICE`
-- **TTS**: Local Piper binary — must be on `$PATH`
+- **TTS**: Piper models are loaded by the in-repo Python provider configured in `config.yaml`; no standalone `piper` binary on `$PATH` is required
 - **STT**: Sherpa-ONNX `sense_voice` model — model path set in `config.yaml`
 - **Display**: `:0` — `DISPLAY=:0` required for PyGame UI
+- **Hardware smoke runner**: dedicated Pi checkout must stay at `/home/jh-pi/.openclaw/workspace/voiceassist` with audio/display available and no competing local activity during manual smoke runs
 
 ## Known Upstream Issues
 

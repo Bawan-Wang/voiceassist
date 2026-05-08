@@ -1,0 +1,166 @@
+name: Hardware Smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: voiceassist-hardware-smoke
+  cancel-in-progress: false
+
+env:
+  VOICEASSIST_CANONICAL_DIR: /home/jh-pi/.openclaw/workspace/voiceassist
+
+jobs:
+  hardware-smoke:
+    runs-on:
+      - self-hosted
+      - linux
+      - ARM64
+      - voiceassist-pi
+    timeout-minutes: 20
+
+    steps:
+      - name: Run hardware smoke
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          repo_dir="$VOICEASSIST_CANONICAL_DIR"
+          py="$repo_dir/.venv/bin/python"
+          config_path="$repo_dir/config.yaml"
+          target_sha="${GITHUB_SHA}"
+          target_remote="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          original_remote="$(git -C "$repo_dir" remote get-url origin)"
+          original_ref="$(git -C "$repo_dir" symbolic-ref -q --short HEAD || true)"
+          original_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+          restore_checkout=0
+
+          cleanup() {
+            set +e
+            if [[ -x "$repo_dir/rabbitctl.sh" ]]; then
+              "$repo_dir/rabbitctl.sh" stop >/tmp/hardware-smoke-stop.log 2>&1 || true
+              "$repo_dir/rabbitctl.sh" status >/tmp/hardware-smoke-status-after.log 2>&1 || true
+            fi
+            git -C "$repo_dir" remote set-url origin "$original_remote" || true
+            if [[ "$restore_checkout" -eq 1 ]]; then
+              if [[ -n "$original_ref" ]]; then
+                git -C "$repo_dir" checkout "$original_ref" || true
+              else
+                git -C "$repo_dir" checkout --detach "$original_sha" || true
+              fi
+            fi
+          }
+          trap cleanup EXIT
+
+          test -d "$repo_dir/.git"
+          test -x "$py"
+          test -f "$config_path"
+
+          if [[ -n "$(git -C "$repo_dir" status --porcelain)" ]]; then
+            echo "Canonical repository must be clean before hardware smoke."
+            git -C "$repo_dir" status --short
+            exit 1
+          fi
+
+          if [[ "$(readlink -f "$repo_dir")" != "$repo_dir" ]]; then
+            echo "Canonical path must resolve to itself: $repo_dir"
+            exit 1
+          fi
+
+          git -C "$repo_dir" remote set-url origin "$target_remote"
+          git -C "$repo_dir" fetch --depth=1 origin "$target_sha"
+          git -C "$repo_dir" checkout --detach "$target_sha"
+          git -C "$repo_dir" remote set-url origin "$original_remote"
+          restore_checkout=1
+
+          cd "$repo_dir"
+          rm -f \
+            /tmp/assistant_bridge.log \
+            /tmp/bunny_ui.log \
+            /tmp/voice_bridge.log \
+            /tmp/hardware-smoke-*.log
+
+          ./rabbitctl.sh status | tee /tmp/hardware-smoke-status-before.log
+
+          for pattern in \
+            "uvicorn src.api.app" \
+            "python src/ui/assistant_ui.py" \
+            "src.bridge.voice_bridge" \
+            "/home/jh-pi/workspace/photoframe/main.py"
+          do
+            if pgrep -af "$pattern"; then
+              echo "Managed process already running before smoke: $pattern"
+              exit 1
+            fi
+          done
+
+          "$py" -c "from src.bridge.runtime_config import load_app_config; config_path, loaded = load_app_config('config.yaml'); voice = loaded['voiceBridge']; required_keys = ['state_path', 'audio', 'wake', 'routing', 'vad', 'stt', 'tts']; missing = [key for key in required_keys if key not in voice]; missing and (_ for _ in ()).throw(SystemExit(f'voiceBridge missing keys: {missing}')); print(f'config_path={config_path}'); print(f\"state_path={voice['state_path']}\"); print(f\"stt_provider={voice['stt']['active']}\"); print(f\"tts_provider={voice['tts']['active']}\")"
+
+          ./rabbitctl.sh start | tee /tmp/hardware-smoke-start.log
+
+          api_ready=""
+          ui_ready=""
+          bridge_ready=""
+          for _attempt in $(seq 1 15); do
+            api_ready="$(pgrep -f "uvicorn src.api.app" | head -n1 || true)"
+            ui_ready="$(pgrep -f "python src/ui/assistant_ui.py" | head -n1 || true)"
+            bridge_ready="$(pgrep -f "src.bridge.voice_bridge" | head -n1 || true)"
+            if [[ -n "$api_ready" && -n "$ui_ready" && -n "$bridge_ready" ]]; then
+              break
+            fi
+            sleep 1
+          done
+
+          if [[ -z "$api_ready" || -z "$ui_ready" || -z "$bridge_ready" ]]; then
+            echo "Managed services did not all start successfully."
+            ./rabbitctl.sh status | tee /tmp/hardware-smoke-status-start-failed.log
+            exit 1
+          fi
+
+          for log_path in \
+            /tmp/assistant_bridge.log \
+            /tmp/bunny_ui.log \
+            /tmp/voice_bridge.log
+          do
+            if [[ ! -f "$log_path" ]]; then
+              echo "Expected log file missing: $log_path"
+              exit 1
+            fi
+          done
+
+          ./rabbitctl.sh status | tee /tmp/hardware-smoke-status-running.log
+          ./rabbitctl.sh stop | tee /tmp/hardware-smoke-stop.log
+
+          for pattern in \
+            "uvicorn src.api.app" \
+            "python src/ui/assistant_ui.py" \
+            "src.bridge.voice_bridge" \
+            "/home/jh-pi/workspace/photoframe/main.py"
+          do
+            if pgrep -af "$pattern"; then
+              echo "Managed process still running after stop: $pattern"
+              exit 1
+            fi
+          done
+
+          ./rabbitctl.sh status | tee /tmp/hardware-smoke-status-after.log
+
+      - name: Upload hardware smoke logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardware-smoke-logs-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            /tmp/assistant_bridge.log
+            /tmp/bunny_ui.log
+            /tmp/voice_bridge.log
+            /tmp/hardware-smoke-*.log
+            /tmp/photoframe.ready
+            /tmp/voiceassist_signal.json

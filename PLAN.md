@@ -39,10 +39,11 @@ tests/                       Pytest harness
 | 17 | Collapse config to yaml-only source of truth (exec-plan 016) | ✅ Done |
 | 18 | Fix dependency manifests + clean-install baseline (exec-plan 017) | ✅ Done |
 | 19 | Add GitHub-hosted CI + code scanning baseline (exec-plan 018A) | ✅ Done |
+| 20 | Add Raspberry Pi self-hosted hardware smoke workflow (exec-plan 018B) | ✅ Done |
 
 ## Active Exec Plans
 
-- `018B` — Raspberry Pi self-hosted hardware smoke workflow (`draft`, not started)
+None.
 
 ## Done (archived)
 
@@ -54,4 +55,5 @@ See `.docs/exec-plans/done/` — includes 001 (env), 002 (vlm-bridge), 003
 012 (drop-deprecated-skill-routes), 013 (consolidate-skill-helpers),
 014 (unify-search-tokens), 015 (collapse-config-globals),
 016 (yaml-source-of-truth), 017 (dependency-manifests-clean-install),
-018A (github-hosted-ci-and-code-scanning-baseline).
+018A (github-hosted-ci-and-code-scanning-baseline),
+018B (raspberry-pi-self-hosted-hardware-smoke).
