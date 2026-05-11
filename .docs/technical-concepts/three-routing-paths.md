@@ -1,0 +1,374 @@
+# Three Routing Paths in voiceassist
+
+This document explains the three runtime paths that `voiceassist` uses after
+speech is transcribed into text.
+
+The important point is that this repository does **not** use one single
+"LLM decides everything" flow.
+
+- Deterministic local actions use a local-skill fast path.
+- General conversation uses direct GPT streaming inside the voice bridge.
+- Search and weather use the API path plus OpenAI `web_search`.
+
+## Quick Comparison
+
+| Path | Trigger | Goes through API | Uses LLM | Uses tool | Typical use |
+|---|---|---:|---:|---:|---|
+| Local skill | `is_local_skill(text)` | Yes | No | No | Open photoframe, switch back to bunny, future deterministic commands like telling time |
+| General Q&A | Not local skill, not search intent | No | Yes | No | Chitchat, explanation, general knowledge |
+| Search / weather | `is_search_intent(text)` | Yes | Yes | Yes | Real-time info, latest news, weather, browsing |
+
+## Path 1: Local Skill Fast Path
+
+### Intent
+
+Use this path when the command is deterministic and can be handled locally.
+
+Examples:
+
+- `打開相框`
+- `切回兔兔`
+- A future `現在幾點` / `今天星期幾` skill
+
+### Flow
+
+```text
+User speech
+  -> STT transcript
+  -> voice_bridge checks is_local_skill(...)
+  -> POST /zero-assistant
+  -> api/app.py runs match_skill(...)
+  -> matching skill.run()
+  -> reply_text returned
+  -> voice bridge speaks the reply
+```
+
+### Why this path exists
+
+The repository intentionally avoids sending local device actions to GPT first.
+That reduces latency and avoids the model answering *about* the command instead
+of actually executing it.
+
+### Main code paths
+
+- `src/api/skills/tokens.py`
+- `src/bridge/voice_bridge.py`
+- `src/api/app.py`
+- `src/api/skills/__init__.py`
+
+### Key snippet: pure-string local-skill detection
+
+Path: `src/api/skills/tokens.py`
+
+```python
+def is_local_skill(text: str) -> bool:
+    """Cheap pre-check used by voice_bridge to decide whether to POST
+    the utterance to /zero-assistant instead of streaming via GPT."""
+    return matches_photoframe(text) or matches_bunny(text)
+```
+
+This helper is intentionally lightweight so `voice_bridge.py` can import it
+without pulling in the full FastAPI stack.
+
+### Key snippet: voice bridge routes local skill before search detection
+
+Path: `src/bridge/voice_bridge.py`
+
+```python
+local_text = None
+if is_local_skill(command):
+    local_text = command
+elif is_local_skill(transcript):
+    local_text = transcript
+    print("[voice_bridge] Local skill found in raw transcript (wake-word stripper ate it)")
+if local_text is not None:
+    print(f"[voice_bridge] Local skill detected, routing to API: {local_text}")
+    update_state(self.cfg.state_path, "thinking", user_text=local_text, assistant_text="")
+    reply = self._reply_via_api(local_text)
+    if not reply:
+        update_state(self.cfg.state_path, "idle", assistant_text="抱歉，沒有聽清楚。")
+        continue
+    update_state(self.cfg.state_path, "speaking", assistant_text=reply)
+    self.speak(reply)
+    update_state(self.cfg.state_path, "idle", assistant_text=reply)
+    continue
+```
+
+This is the decisive branch. If it matches here, the request does not go to the
+general GPT conversation path.
+
+### Key snippet: API dispatches to the local skill registry first
+
+Path: `src/api/app.py`
+
+```python
+from .skills import match_skill
+hit = match_skill(text)
+if hit is not None:
+    reply = hit.run()
+    return AssistResponse(
+        reply_text=reply,
+        meta={"source": "local-skill", "action": hit.NAME},
+    )
+```
+
+### Key snippet: manual skill registry
+
+Path: `src/api/skills/__init__.py`
+
+```python
+from . import open_bunny, open_photoframe, tokens
+
+SKILLS = [open_photoframe, open_bunny]
+
+def match_skill(text: str):
+    if not text:
+        return None
+    for skill in SKILLS:
+        try:
+            if skill.match(text):
+                return skill
+        except Exception:
+            continue
+    return None
+```
+
+The current repository uses a manual registry, not model-driven tool calling.
+
+## Path 2: Direct GPT General Q&A
+
+### Intent
+
+Use this path for regular conversation when the utterance is not a local skill
+and does not look like a search query.
+
+Examples:
+
+- `你好`
+- `你覺得學 Python 要先學什麼`
+- `幫我解釋一下 Docker 是什麼`
+
+### Flow
+
+```text
+User speech
+  -> STT transcript
+  -> not a local skill
+  -> not a search intent
+  -> voice bridge calls GPT directly
+  -> reply is streamed sentence by sentence
+  -> local TTS speaks the streamed reply
+```
+
+### Why this path exists
+
+This is the lowest-friction conversational path. It avoids the extra HTTP hop to
+the local API when the assistant only needs a normal language response.
+
+### Main code paths
+
+- `src/bridge/voice_bridge.py`
+
+### Key snippet: branch selection in the voice bridge
+
+Path: `src/bridge/voice_bridge.py`
+
+```python
+searching = is_search_intent(command)
+if searching:
+    hint = self.cfg.search_hint
+    print(f"[voice_bridge] Search intent detected, speaking hint first")
+    update_state(self.cfg.state_path, "thinking", user_text=command, assistant_text=hint)
+    self.speak(hint)
+    reply = self.generate_reply(command, search=True)
+else:
+    update_state(self.cfg.state_path, "thinking", user_text=command, assistant_text="正在思考回覆…")
+    reply = self.stream_reply_and_speak(command)
+```
+
+When `searching` is false, the bridge goes straight to `stream_reply_and_speak`.
+
+### Key snippet: direct GPT streaming call
+
+Path: `src/bridge/voice_bridge.py`
+
+```python
+stream = self.client.chat.completions.create(
+    model=self.cfg.llm_model,
+    messages=[
+        {
+            "role": "system",
+            "content": self.cfg.llm_system_prompt,
+        },
+        {"role": "user", "content": prompt},
+    ],
+    max_tokens=self.cfg.stream_max_tokens,
+    stream=True,
+)
+```
+
+This is not a tool call. The bridge is asking the model for a direct answer and
+then speaking it as the text streams back.
+
+## Path 3: Search / Weather via API + OpenAI web_search
+
+### Intent
+
+Use this path for requests that need current information from the internet.
+
+Examples:
+
+- `幫我查台北今天的天氣`
+- `最新 AI 新聞`
+- `幫我找一下某家公司最近動態`
+
+### Flow
+
+```text
+User speech
+  -> STT transcript
+  -> voice bridge sees search intent
+  -> POST /zero-assistant
+  -> api/app.py sees is_search_intent(text)
+  -> src/api/websearch.py calls OpenAI Responses + web_search tool
+  -> reply_text returned to voice bridge
+  -> voice bridge normalizes speech output and speaks it
+```
+
+### Why this path exists
+
+Real-time information should not depend on a plain LLM response without a tool.
+This route uses OpenAI's built-in `web_search` so the assistant can answer with
+fresh web data.
+
+### Main code paths
+
+- `src/bridge/voice_bridge.py`
+- `src/api/app.py`
+- `src/api/websearch.py`
+- `src/api/skills/tokens.py`
+
+### Key snippet: search-intent detection
+
+Path: `src/api/skills/tokens.py`
+
+```python
+SEARCH_TOKENS = (
+    "查", "搜尋", "搜索", "找", "查詢", "查一下", "幫我查", "最新", "新聞",
+    "網路上", "網頁", "資料", "天氣",
+    "weather", "search", "look up", "find", "browse",
+)
+
+def is_search_intent(text: str) -> bool:
+    if not text:
+        return False
+    return any(tok in text for tok in SEARCH_TOKENS)
+```
+
+### Key snippet: API chooses the websearch route
+
+Path: `src/api/app.py`
+
+```python
+from .skills.tokens import is_search_intent
+is_search = is_search_intent(text)
+
+if is_search and os.environ.get("VOICEASSIST_DISABLE_WEBSEARCH", "").strip() != "1":
+    try:
+        from .websearch import run_websearch
+        print("[api] using websearch path", flush=True)
+        reply = run_websearch(text)
+        if reply:
+            return AssistResponse(
+                reply_text=reply,
+                meta={"source": "openai-websearch", "search": True},
+            )
+    except Exception as exc:
+        print(f"[api] websearch failed: {exc}; falling back to openai", flush=True)
+```
+
+### Key snippet: actual OpenAI tool usage
+
+Path: `src/api/websearch.py`
+
+```python
+resp = client.responses.create(
+    model=WEBSEARCH_MODEL,
+    tools=[{"type": "web_search"}],
+    input=[
+        {
+            "role": "system",
+            "content": [{"type": "input_text", "text": sys_prompt}],
+        },
+        {
+            "role": "user",
+            "content": [{"type": "input_text", "text": query.strip()}],
+        },
+    ],
+)
+```
+
+This is the only one of the three paths that is clearly using a tool call.
+
+## Decision Rules Summary
+
+If you want to add a new capability, use this checklist:
+
+### Choose local skill when
+
+- The action is deterministic.
+- The result comes from local state or the device itself.
+- You do not want GPT to decide whether the action should run.
+- Low latency matters.
+
+Typical examples:
+
+- open photoframe
+- switch to bunny UI
+- tell current time
+- tell current date
+- device control
+
+### Choose direct GPT path when
+
+- The request is open-ended conversation.
+- No external tool is required.
+- A natural language answer is enough.
+
+Typical examples:
+
+- casual questions
+- explanations
+- brainstorming
+
+### Choose search / tool path when
+
+- The answer depends on current web data.
+- Accuracy depends on external retrieval.
+- You need up-to-date weather, news, or browse-like results.
+
+Typical examples:
+
+- current weather
+- latest news
+- recent company updates
+
+## Important Architectural Note
+
+In many agent systems, the standard pattern is:
+
+```text
+user request -> LLM decides tool call -> local runtime executes tool -> LLM writes final answer
+```
+
+That is a valid pattern, but it is **not** how this repository currently handles
+local device skills.
+
+For `voiceassist` today:
+
+- local skills are routed by deterministic string matching first
+- general Q&A goes directly to GPT from the voice bridge
+- search/weather goes through the API and uses OpenAI `web_search`
+
+That split architecture is deliberate and should be kept in mind when adding new
+features.
