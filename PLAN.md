@@ -43,7 +43,7 @@ tests/                       Pytest harness
 
 ## Active Exec Plans
 
-None.
+- 020 — shared routing policy (`.docs/exec-plans/020-shared-routing-policy.md`)
 
 ## Done (archived)
 
@@ -56,4 +56,5 @@ See `.docs/exec-plans/done/` — includes 001 (env), 002 (vlm-bridge), 003
 014 (unify-search-tokens), 015 (collapse-config-globals),
 016 (yaml-source-of-truth), 017 (dependency-manifests-clean-install),
 018A (github-hosted-ci-and-code-scanning-baseline),
-018B (raspberry-pi-self-hosted-hardware-smoke).
+018B (raspberry-pi-self-hosted-hardware-smoke),
+019 (document-voice-vs-http-entrypoints).
