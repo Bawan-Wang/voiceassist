@@ -6,7 +6,12 @@ Base URL: `http://127.0.0.1:8000`
 
 ### `POST /zero-assistant`
 
-Routes voice input to local commands, OpenAI websearch, or plain OpenAI.
+Routes already-available text to local commands, OpenAI websearch, or plain
+OpenAI.
+
+This endpoint is the HTTP text entrypoint only. It does not own microphone
+capture, VAD, STT, wake-word handling, or TTS; those belong to the voice
+runtime described in [technical-concepts/entrypoints.md](technical-concepts/entrypoints.md).
 
 **Request**
 ```json

@@ -7,7 +7,12 @@
 
 ## Summary
 
-After a command is transcribed, the system classifies it into one of three intent categories and routes it to the appropriate handler — local execution, OpenAI websearch (with plain OpenAI fallback), or plain OpenAI GPT-4o-mini.
+Once text is available, the system classifies it into one of three intent categories and routes it to the appropriate handler — local execution, OpenAI websearch (with plain OpenAI fallback), or plain OpenAI GPT-4o-mini.
+
+This document starts at the text-routing stage. The voice runtime and the HTTP
+endpoint do not enter the system at the same stage; see
+[`technical-concepts/entrypoints.md`](../technical-concepts/entrypoints.md)
+for the pre-020 split-entrypoint architecture.
 
 ---
 

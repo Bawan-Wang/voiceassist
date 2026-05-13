@@ -3,6 +3,11 @@
 This document explains the three runtime paths that `voiceassist` uses after
 speech is transcribed into text.
 
+If you want to understand how requests first enter the system through the
+long-lived voice runtime versus the HTTP text endpoint, read
+[entrypoints.md](entrypoints.md) first. This page starts only after text is
+already available.
+
 The important point is that this repository does **not** use one single
 "LLM decides everything" flow.
 

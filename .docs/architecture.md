@@ -58,6 +58,9 @@ There are currently two different routing entry paths in the repo:
 
 They do **not** make identical routing decisions today.
 
+For the canonical explanation of how these entrypoints differ before and after
+text exists, see [technical-concepts/entrypoints.md](technical-concepts/entrypoints.md).
+
 ## Intent Routing in bridge/voice_bridge.py
 
 ```
