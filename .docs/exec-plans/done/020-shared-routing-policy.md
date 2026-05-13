@@ -1,25 +1,25 @@
 # 020 — Shared Routing Policy
 
-## Status: Planned 🟡
+## Status: Done ✅
 
 ## Motivation
 
-Today the repository has **two runtime entrypoints** and **two copies of the
+Today the repository had **two runtime entrypoints** and **two copies of the
 routing decision tree**:
 
-- [src/bridge/voice_bridge.py](../../src/bridge/voice_bridge.py) decides inside
+- [src/bridge/voice_bridge.py](../../../src/bridge/voice_bridge.py) decides inside
   `VoiceBridge.run()` whether a request is a local skill, a search/tool-needed
   request, or normal chat.
-- [src/api/app.py](../../src/api/app.py) decides inside `POST /zero-assistant`
+- [src/api/app.py](../../../src/api/app.py) decides inside `POST /zero-assistant`
   whether the text is a local skill, a search request, or a plain OpenAI
   fallback.
 
 The duplication is subtle because the repo already shares some primitives:
 
 - `is_local_skill()` / `is_search_intent()` in
-  [src/api/skills/tokens.py](../../src/api/skills/tokens.py)
+      [src/api/skills/tokens.py](../../../src/api/skills/tokens.py)
 - `match_skill()` in
-  [src/api/skills/__init__.py](../../src/api/skills/__init__.py)
+      [src/api/skills/__init__.py](../../../src/api/skills/__init__.py)
 
 But the final policy is still split across two call sites, which creates drift
 pressure:
@@ -43,14 +43,14 @@ It unifies classification first because that is the lowest-risk slice.
 
 ## Pre-flight
 
-- [ ] Confirm 019 has either landed or is ready to land, so the pre-020 split
+- [x] Confirm 019 has either landed or is ready to land, so the pre-020 split
       architecture is documented before refactoring it.
-- [ ] Snapshot current routing tests:
+- [x] Snapshot current routing tests:
       `cd /home/jh-pi/.openclaw/workspace/voiceassist && .venv/bin/pytest -q`
-- [ ] Confirm the current skill/token helpers still live in:
-  - [src/api/skills/__init__.py](../../src/api/skills/__init__.py)
-  - [src/api/skills/tokens.py](../../src/api/skills/tokens.py)
-- [ ] Confirm no parallel branch is already introducing a `policy.py` or other
+- [x] Confirm the current skill/token helpers still live in:
+      - [src/api/skills/__init__.py](../../../src/api/skills/__init__.py)
+      - [src/api/skills/tokens.py](../../../src/api/skills/tokens.py)
+- [x] Confirm no parallel branch is already introducing a `policy.py` or other
       new routing abstraction under `src/api/skills/`.
 
 ---
@@ -89,8 +89,8 @@ The key invariant after 020:
 
 ### Step 1 — Add a shared routing policy module
 
-- [ ] Create [src/api/skills/policy.py](../../src/api/skills/policy.py).
-- [ ] Add a small explicit API, e.g.:
+- [x] Create [src/api/skills/policy.py](../../../src/api/skills/policy.py).
+- [x] Add a small explicit API, e.g.:
 
   ```python
   class RouteKind(Enum):
@@ -110,33 +110,33 @@ The key invariant after 020:
       ...
   ```
 
-- [ ] Keep this module dependency-light so the bridge can import it cheaply.
-- [ ] Reuse existing helpers instead of re-encoding tokens in a third place.
+- [x] Keep this module dependency-light so the bridge can import it cheaply.
+- [x] Reuse existing helpers instead of re-encoding tokens in a third place.
 
 ### Step 2 — Define policy precedence explicitly
 
-- [ ] Lock the route order to:
+- [x] Lock the route order to:
   1. local skill,
   2. tool-needed/search,
   3. chat.
-- [ ] Preserve the current bridge-only raw transcript recovery behavior:
+- [x] Preserve the current bridge-only raw transcript recovery behavior:
   - first evaluate `text`,
   - then, for local skills only, allow fallback to `raw_transcript` when
     `text` lost the noun during wake stripping.
-- [ ] Do **not** infer new tool-needed categories in 020 beyond the current
+- [x] Do **not** infer new tool-needed categories in 020 beyond the current
       search/weather behavior.
 
 ### Step 3 — Switch the HTTP API to the shared policy
 
-- [ ] Refactor [src/api/app.py](../../src/api/app.py) so `zero_assistant()`
+- [x] Refactor [src/api/app.py](../../../src/api/app.py) so `zero_assistant()`
       calls `classify_request(text)` once.
-- [ ] Replace the separate `match_skill()` and `is_search_intent()` branching
+- [x] Replace the separate `match_skill()` and `is_search_intent()` branching
       with `RouteDecision` handling.
-- [ ] Preserve current execution semantics:
+- [x] Preserve current execution semantics:
   - `LOCAL_SKILL` -> `decision.skill.run()`
   - `TOOL_NEEDED` -> `run_websearch()` then plain OpenAI fallback on failure
   - `CHAT` -> plain OpenAI fallback
-- [ ] Preserve backward-compatible response metadata:
+- [x] Preserve backward-compatible response metadata:
   - `meta.source == "local-skill"`
   - `meta.source == "openai-websearch"`
   - `meta.source == "fallback-openai"`
@@ -144,35 +144,35 @@ The key invariant after 020:
 
 ### Step 4 — Switch the voice bridge to the shared policy
 
-- [ ] Refactor [src/bridge/voice_bridge.py](../../src/bridge/voice_bridge.py)
+- [x] Refactor [src/bridge/voice_bridge.py](../../../src/bridge/voice_bridge.py)
       so `VoiceBridge.run()` calls:
 
   ```python
   decision = classify_request(command, raw_transcript=transcript)
   ```
 
-- [ ] Replace the inline `is_local_skill(...)` / `is_search_intent(...)`
+- [x] Replace the inline `is_local_skill(...)` / `is_search_intent(...)`
       branching in `run()` with one `RouteDecision` switch.
-- [ ] Preserve current executors:
+- [x] Preserve current executors:
   - `LOCAL_SKILL` -> `_reply_via_api(decision.routed_text)`
   - `TOOL_NEEDED` -> speak the search hint, then `_reply_via_api(command)`
   - `CHAT` -> `stream_reply_and_speak(command)`
-- [ ] Keep wake-word handling, `_should_route_without_wake()`, and raw audio
+- [x] Keep wake-word handling, `_should_route_without_wake()`, and raw audio
       lifecycle logic outside the new policy.
 
 ### Step 5 — Keep transport boundaries intact in this phase
 
-- [ ] Leave `_reply_via_api()` in
-      [src/bridge/voice_bridge.py](../../src/bridge/voice_bridge.py) intact.
-- [ ] Leave `_reply_via_gpt4o_mini()` and `stream_reply_and_speak()` intact.
-- [ ] Remove only trivial wrappers if they become obviously redundant
+- [x] Leave `_reply_via_api()` in
+      [src/bridge/voice_bridge.py](../../../src/bridge/voice_bridge.py) intact.
+- [x] Leave `_reply_via_gpt4o_mini()` and `stream_reply_and_speak()` intact.
+- [x] Remove only trivial wrappers if they become obviously redundant
       after the classifier lands.
-- [ ] Do **not** force normal chat through the HTTP API in 020.
+- [x] Do **not** force normal chat through the HTTP API in 020.
 
 ### Step 6 — Add policy-level tests
 
-- [ ] Create [tests/test_routing_policy.py](../../tests/test_routing_policy.py).
-- [ ] Cover at least:
+- [x] Create [tests/test_routing_policy.py](../../../tests/test_routing_policy.py).
+- [x] Cover at least:
   - local skill beats search-token collisions,
   - search becomes `TOOL_NEEDED`,
   - normal chat becomes `CHAT`,
@@ -181,42 +181,42 @@ The key invariant after 020:
 
 Suggested cases:
 
-- [ ] `打開相框` -> `LOCAL_SKILL`
-- [ ] `切回兔兔` -> `LOCAL_SKILL`
-- [ ] `幫我查新北天氣` -> `TOOL_NEEDED`
-- [ ] `你好` -> `CHAT`
-- [ ] `text="切回"`, `raw_transcript="兔兔助理切回兔兔"` -> `LOCAL_SKILL`
+- [x] `打開相框` -> `LOCAL_SKILL`
+- [x] `切回兔兔` -> `LOCAL_SKILL`
+- [x] `幫我查新北天氣` -> `TOOL_NEEDED`
+- [x] `你好` -> `CHAT`
+- [x] `text="切回"`, `raw_transcript="兔兔助理切回兔兔"` -> `LOCAL_SKILL`
 
 ### Step 7 — Update caller tests
 
-- [ ] Update [tests/test_api.py](../../tests/test_api.py) so it continues to
+- [x] Update [tests/test_api.py](../../../tests/test_api.py) so it continues to
       validate the response contract after the internal routing refactor.
-- [ ] Update [tests/test_voice_bridge_local_routing.py](../../tests/test_voice_bridge_local_routing.py)
+- [x] Update [tests/test_voice_bridge_local_routing.py](../../../tests/test_voice_bridge_local_routing.py)
       so it validates shared-policy behavior, not just token helper behavior.
-- [ ] Keep [tests/test_intent.py](../../tests/test_intent.py) and
-      [tests/test_skills.py](../../tests/test_skills.py) as the low-level
+- [x] Keep [tests/test_intent.py](../../../tests/test_intent.py) and
+      [tests/test_skills.py](../../../tests/test_skills.py) as the low-level
       helper tests unless the refactor makes them redundant.
 
 ### Step 8 — Update docs to match the new model
 
-- [ ] Update [../technical-concepts/entrypoints.md](../technical-concepts/entrypoints.md)
+- [x] Update [../technical-concepts/entrypoints.md](../../technical-concepts/entrypoints.md)
       from 019 so it explains that the two entrypoints now share a classifier
       but still use different executors.
-- [ ] Update [../architecture.md](../architecture.md) so the "Two Runtime Entry
+- [x] Update [../architecture.md](../../architecture.md) so the "Two Runtime Entry
       Paths" section no longer says the bridge and API make different routing
       decisions.
-- [ ] Update [../product-specs/intent-routing.md](../product-specs/intent-routing.md)
+- [x] Update [../product-specs/intent-routing.md](../../product-specs/intent-routing.md)
       so the decision tree starts with the shared classifier.
-- [ ] Update [../technical-concepts/three-routing-paths.md](../technical-concepts/three-routing-paths.md)
+- [x] Update [../technical-concepts/three-routing-paths.md](../../technical-concepts/three-routing-paths.md)
       with a short section explaining "shared classification, separate
       executors".
 
 ### Step 9 — Verify in layers
 
-- [ ] Run the new policy test file first.
-- [ ] Run the routing-slice tests next.
-- [ ] Run the full baseline suite after the slice is green.
-- [ ] Finish with a live smoke pass through the voice runtime:
+- [x] Run the new policy test file first.
+- [x] Run the routing-slice tests next.
+- [x] Run the full baseline suite after the slice is green.
+- [x] Finish with a live smoke pass through the voice runtime:
   - one local skill phrase,
   - one search phrase,
   - one normal chat phrase.
@@ -225,16 +225,16 @@ Suggested cases:
 
 ## Acceptance Criteria
 
-- [ ] A new shared policy module exists at
-      [src/api/skills/policy.py](../../src/api/skills/policy.py).
-- [ ] Both [src/api/app.py](../../src/api/app.py) and
-      [src/bridge/voice_bridge.py](../../src/bridge/voice_bridge.py) call the
+- [x] A new shared policy module exists at
+      [src/api/skills/policy.py](../../../src/api/skills/policy.py).
+- [x] Both [src/api/app.py](../../../src/api/app.py) and
+      [src/bridge/voice_bridge.py](../../../src/bridge/voice_bridge.py) call the
       shared policy instead of maintaining separate route trees.
-- [ ] The API response contract remains backward compatible.
-- [ ] The voice bridge still preserves the raw-transcript local-skill fallback.
-- [ ] The voice bridge still streams chat responses sentence-by-sentence.
-- [ ] `pytest tests/test_routing_policy.py -q` passes.
-- [ ] The routing-focused slice passes:
+- [x] The API response contract remains backward compatible.
+- [x] The voice bridge still preserves the raw-transcript local-skill fallback.
+- [x] The voice bridge still streams chat responses sentence-by-sentence.
+- [x] `pytest tests/test_routing_policy.py -q` passes.
+- [x] The routing-focused slice passes:
 
   ```bash
   cd /home/jh-pi/.openclaw/workspace/voiceassist
@@ -242,14 +242,14 @@ Suggested cases:
       tests/test_intent.py tests/test_skills.py -q
   ```
 
-- [ ] The full suite passes:
+- [x] The full suite passes:
 
   ```bash
   cd /home/jh-pi/.openclaw/workspace/voiceassist
   .venv/bin/pytest -q
   ```
 
-- [ ] Live smoke confirms that local skill, search, and chat still reach their
+- [x] Live smoke confirms that local skill, search, and chat still reach their
       expected executors with no obvious latency regression.
 
 ---
@@ -260,8 +260,8 @@ If the shared classifier introduces routing regressions:
 
 1. Revert the commit that introduces `policy.py` and the two caller changes.
 2. Restore the previous inline routing logic in
-   [src/bridge/voice_bridge.py](../../src/bridge/voice_bridge.py) and
-   [src/api/app.py](../../src/api/app.py).
+      [src/bridge/voice_bridge.py](../../../src/bridge/voice_bridge.py) and
+      [src/api/app.py](../../../src/api/app.py).
 3. Re-run the routing-slice tests and one live smoke pass.
 
 Because 020 keeps the existing executors intact, rollback should be mechanical:

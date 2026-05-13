@@ -1,6 +1,6 @@
 # Spec: Intent Routing
 
-**Module:** `src/api/app.py`, `src/bridge/voice_bridge.py`
+**Module:** `src/api/app.py`, `src/bridge/voice_bridge.py`, `src/api/skills/policy.py`
 **Status:** Implemented ✅
 
 ---
@@ -10,9 +10,9 @@
 Once text is available, the system classifies it into one of three intent categories and routes it to the appropriate handler — local execution, OpenAI websearch (with plain OpenAI fallback), or plain OpenAI GPT-4o-mini.
 
 This document starts at the text-routing stage. The voice runtime and the HTTP
-endpoint do not enter the system at the same stage; see
-[`technical-concepts/entrypoints.md`](../technical-concepts/entrypoints.md)
-for the pre-020 split-entrypoint architecture.
+endpoint still do not enter the system at the same stage, but after 020 they do
+share one classifier; see
+[`technical-concepts/entrypoints.md`](../technical-concepts/entrypoints.md).
 
 ---
 
@@ -22,23 +22,23 @@ for the pre-020 split-entrypoint architecture.
 Transcribed command
         │
         ▼
-1. Local skill? (photoframe / bunny tokens — see `local-commands.md`)
-   └─ YES → `src.api.skills.match_skill(text).run()`
-            meta.source = "local-skill", meta.action = NAME
-            (also short-circuited in voice_bridge via `is_local_skill()`)
-        │
-        ▼
-2. Search intent? (see token list below)
-   └─ YES → POST /zero-assistant
-            ├─ try OpenAI Responses + `web_search` tool   (~3–8 s, 006)
-            │     └─ success → meta.source = "openai-websearch"
-            └─ fallback to plain GPT-4o-mini Responses
-                  └─ meta.source = "fallback-openai"
-        │
-        ▼
-3. General Q&A
-   ├─ Voice bridge path → direct GPT-4o-mini streaming call
-   └─ API direct path   → plain GPT-4o-mini Responses (same fallback engine as search)
+shared `classify_request(text, raw_transcript=None)`
+  │
+  ├─ 1. Local skill? (photoframe / bunny tokens — see `local-commands.md`)
+  │  └─ YES → `src.api.skills.match_skill(text).run()`
+  │           meta.source = "local-skill", meta.action = NAME
+  │           (voice bridge may use `raw_transcript` fallback for this branch)
+  │
+  ├─ 2. Search intent? (see token list below)
+  │  └─ YES → POST /zero-assistant
+  │           ├─ try OpenAI Responses + `web_search` tool   (~3–8 s, 006)
+  │           │     └─ success → meta.source = "openai-websearch"
+  │           └─ fallback to plain GPT-4o-mini Responses
+  │                 └─ meta.source = "fallback-openai"
+  │
+  └─ 3. General Q&A
+     ├─ Voice bridge path → direct GPT-4o-mini streaming call
+     └─ API direct path   → plain GPT-4o-mini Responses (same fallback engine as search)
 ```
 
 ---
@@ -54,7 +54,7 @@ A command is classified as **search intent** if it contains any of the following
 ## Handler Behaviour
 
 ### Local Commands
-- Handled entirely in `src/api/app.py` with no LLM call
+- Classified centrally in `src/api/skills/policy.py`, executed in `src/api/app.py` with no LLM call
 - See [`local-commands.md`](local-commands.md) for full trigger and reply spec
 
 ### OpenAI Websearch (primary, 006)
@@ -85,7 +85,7 @@ A command is classified as **search intent** if it contains any of the following
 {
   "reply_text": "...",
   "meta": {
-    "source": "local-skill" | "local-command" | "openai-websearch" | "fallback-openai",
+    "source": "local-skill" | "openai-websearch" | "fallback-openai",
     "search": true | false
   }
 }

@@ -28,9 +28,10 @@ exposed as the tool-call surface.
 IPC: `/tmp/voiceassist_signal.json` — see `_signal.py`. Atomic writes via
 `tempfile + os.replace`.
 
-Voice bridge fast path: `src.api.skills.tokens.is_local_skill(text)` is a
-pure-string helper imported eagerly so the bridge can route local commands
-without touching the FastAPI stack.
+Shared routing surface: `src.api.skills.policy.classify_request()` is the
+canonical decision point for both the voice bridge and `api/app.py`. It keeps
+route order in one place while reusing the existing skill registry and token
+helpers under the hood.
 
 ### External app contract — photoframe (008)
 

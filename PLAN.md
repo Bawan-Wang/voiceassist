@@ -40,10 +40,11 @@ tests/                       Pytest harness
 | 18 | Fix dependency manifests + clean-install baseline (exec-plan 017) | ✅ Done |
 | 19 | Add GitHub-hosted CI + code scanning baseline (exec-plan 018A) | ✅ Done |
 | 20 | Add Raspberry Pi self-hosted hardware smoke workflow (exec-plan 018B) | ✅ Done |
+| 21 | Shared routing policy (exec-plan 020) | ✅ Done |
 
 ## Active Exec Plans
 
-- 020 — shared routing policy (`.docs/exec-plans/020-shared-routing-policy.md`)
+None.
 
 ## Done (archived)
 
@@ -57,4 +58,5 @@ See `.docs/exec-plans/done/` — includes 001 (env), 002 (vlm-bridge), 003
 016 (yaml-source-of-truth), 017 (dependency-manifests-clean-install),
 018A (github-hosted-ci-and-code-scanning-baseline),
 018B (raspberry-pi-self-hosted-hardware-smoke),
-019 (document-voice-vs-http-entrypoints).
+019 (document-voice-vs-http-entrypoints),
+020 (shared-routing-policy).

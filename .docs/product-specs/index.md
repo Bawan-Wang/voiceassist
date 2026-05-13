@@ -39,7 +39,7 @@ Example: 「關燈」、「把燈關掉」
 ## Expected API Response
 {
   "reply_text": "好的，已幫你關燈。",
-  "meta": { "source": "local-command", "action": "gpio_light_off" }
+  "meta": { "source": "local-skill", "action": "gpio_light_off" }
 }
 
 ## Out of Scope

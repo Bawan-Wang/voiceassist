@@ -4,6 +4,7 @@ Verifies that local-skill utterances bypass the GPT streaming path and go
 straight to the API, even when they don't contain search tokens.
 """
 from src.api.skills.tokens import is_local_skill
+from src.api.skills.policy import RouteKind
 from src.bridge import voice_bridge
 
 
@@ -29,6 +30,12 @@ class TestLocalSkillDetection:
         assert voice_bridge.is_local_skill("打開相框") is True
         assert voice_bridge.is_local_skill("你好") is False
 
+    def test_voice_bridge_imports_shared_classifier(self):
+        decision = voice_bridge.classify_request("打開相框")
+
+        assert decision.kind == RouteKind.LOCAL_SKILL
+        assert decision.routed_text == "打開相框"
+
 
 class TestWakeStripperRecovery:
     """Regression: the fuzzy wake-word stripper can accidentally eat the
@@ -41,3 +48,8 @@ class TestWakeStripperRecovery:
         transcript = "兔兔助理切回兔兔"  # what STT actually heard
         assert not is_local_skill(command)
         assert is_local_skill(transcript)  # fallback path catches it
+
+        decision = voice_bridge.classify_request(command, raw_transcript=transcript)
+        assert decision.kind == RouteKind.LOCAL_SKILL
+        assert decision.routed_text == transcript
+        assert decision.used_raw_transcript is True

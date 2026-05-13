@@ -11,6 +11,10 @@ already available.
 The important point is that this repository does **not** use one single
 "LLM decides everything" flow.
 
+Since exec-plan 020, these three paths are selected by the shared
+`classify_request()` policy in `src/api/skills/policy.py`. The voice runtime and
+HTTP endpoint still keep separate executors after that classification step.
+
 - Deterministic local actions use a local-skill fast path.
 - General conversation uses direct GPT streaming inside the voice bridge.
 - Search and weather use the API path plus OpenAI `web_search`.
@@ -19,9 +23,9 @@ The important point is that this repository does **not** use one single
 
 | Path | Trigger | Goes through API | Uses LLM | Uses tool | Typical use |
 |---|---|---:|---:|---:|---|
-| Local skill | `is_local_skill(text)` | Yes | No | No | Open photoframe, switch back to bunny, future deterministic commands like telling time |
-| General Q&A | Not local skill, not search intent | No | Yes | No | Chitchat, explanation, general knowledge |
-| Search / weather | `is_search_intent(text)` | Yes | Yes | Yes | Real-time info, latest news, weather, browsing |
+| Local skill | `RouteKind.LOCAL_SKILL` | Yes | No | No | Open photoframe, switch back to bunny, future deterministic commands like telling time |
+| General Q&A | `RouteKind.CHAT` | No | Yes | No | Chitchat, explanation, general knowledge |
+| Search / weather | `RouteKind.TOOL_NEEDED` | Yes | Yes | Yes | Real-time info, latest news, weather, browsing |
 
 ## Path 1: Local Skill Fast Path
 
@@ -40,7 +44,7 @@ Examples:
 ```text
 User speech
   -> STT transcript
-  -> voice_bridge checks is_local_skill(...)
+    -> classify_request(...)
   -> POST /zero-assistant
   -> api/app.py runs match_skill(...)
   -> matching skill.run()
@@ -75,45 +79,31 @@ def is_local_skill(text: str) -> bool:
 This helper is intentionally lightweight so `voice_bridge.py` can import it
 without pulling in the full FastAPI stack.
 
-### Key snippet: voice bridge routes local skill before search detection
+### Key snippet: shared route decision
 
-Path: `src/bridge/voice_bridge.py`
+Path: `src/api/skills/policy.py`
 
 ```python
-local_text = None
-if is_local_skill(command):
-    local_text = command
-elif is_local_skill(transcript):
-    local_text = transcript
-    print("[voice_bridge] Local skill found in raw transcript (wake-word stripper ate it)")
-if local_text is not None:
-    print(f"[voice_bridge] Local skill detected, routing to API: {local_text}")
-    update_state(self.cfg.state_path, "thinking", user_text=local_text, assistant_text="")
-    reply = self._reply_via_api(local_text)
-    if not reply:
-        update_state(self.cfg.state_path, "idle", assistant_text="抱歉，沒有聽清楚。")
-        continue
-    update_state(self.cfg.state_path, "speaking", assistant_text=reply)
-    self.speak(reply)
-    update_state(self.cfg.state_path, "idle", assistant_text=reply)
-    continue
+decision = classify_request(command, raw_transcript=transcript)
+if decision.kind is RouteKind.LOCAL_SKILL:
+    reply = self._reply_via_api(decision.routed_text)
+elif decision.kind is RouteKind.TOOL_NEEDED:
+    reply = self.generate_reply(decision.routed_text, search=True)
+else:
+    reply = self.stream_reply_and_speak(decision.routed_text)
 ```
-
-This is the decisive branch. If it matches here, the request does not go to the
-general GPT conversation path.
 
 ### Key snippet: API dispatches to the local skill registry first
 
 Path: `src/api/app.py`
 
 ```python
-from .skills import match_skill
-hit = match_skill(text)
-if hit is not None:
-    reply = hit.run()
+decision = classify_request(text)
+if decision.kind is RouteKind.LOCAL_SKILL and decision.skill is not None:
+    reply = decision.skill.run()
     return AssistResponse(
         reply_text=reply,
-        meta={"source": "local-skill", "action": hit.NAME},
+        meta={"source": "local-skill", "action": decision.skill.NAME},
     )
 ```
 
@@ -158,8 +148,7 @@ Examples:
 ```text
 User speech
   -> STT transcript
-  -> not a local skill
-  -> not a search intent
+    -> classify_request(...) returns CHAT
   -> voice bridge calls GPT directly
   -> reply is streamed sentence by sentence
   -> local TTS speaks the streamed reply
@@ -179,19 +168,13 @@ the local API when the assistant only needs a normal language response.
 Path: `src/bridge/voice_bridge.py`
 
 ```python
-searching = is_search_intent(command)
-if searching:
-    hint = self.cfg.search_hint
-    print(f"[voice_bridge] Search intent detected, speaking hint first")
-    update_state(self.cfg.state_path, "thinking", user_text=command, assistant_text=hint)
-    self.speak(hint)
-    reply = self.generate_reply(command, search=True)
-else:
-    update_state(self.cfg.state_path, "thinking", user_text=command, assistant_text="正在思考回覆…")
-    reply = self.stream_reply_and_speak(command)
+decision = classify_request(command, raw_transcript=transcript)
+if decision.kind is RouteKind.CHAT:
+    reply = self.stream_reply_and_speak(decision.routed_text)
 ```
 
-When `searching` is false, the bridge goes straight to `stream_reply_and_speak`.
+When the shared classifier returns `CHAT`, the bridge goes straight to
+`stream_reply_and_speak`.
 
 ### Key snippet: direct GPT streaming call
 
@@ -232,9 +215,9 @@ Examples:
 ```text
 User speech
   -> STT transcript
-  -> voice bridge sees search intent
+    -> classify_request(...) returns TOOL_NEEDED
   -> POST /zero-assistant
-  -> api/app.py sees is_search_intent(text)
+    -> api/app.py sees the same tool-needed route
   -> src/api/websearch.py calls OpenAI Responses + web_search tool
   -> reply_text returned to voice bridge
   -> voice bridge normalizes speech output and speaks it
@@ -253,36 +236,39 @@ fresh web data.
 - `src/api/websearch.py`
 - `src/api/skills/tokens.py`
 
-### Key snippet: search-intent detection
+### Key snippet: shared search/tool-needed classification
 
-Path: `src/api/skills/tokens.py`
+Path: `src/api/skills/policy.py`
 
 ```python
-SEARCH_TOKENS = (
-    "查", "搜尋", "搜索", "找", "查詢", "查一下", "幫我查", "最新", "新聞",
-    "網路上", "網頁", "資料", "天氣",
-    "weather", "search", "look up", "find", "browse",
-)
-
-def is_search_intent(text: str) -> bool:
-    if not text:
-        return False
-    return any(tok in text for tok in SEARCH_TOKENS)
+if is_search_intent(normalized_text):
+    return RouteDecision(
+        kind=RouteKind.TOOL_NEEDED,
+        routed_text=normalized_text,
+        is_search=True,
+    )
 ```
 
-### Key snippet: API chooses the websearch route
+### Key snippet: API executes the classifier decision
 
 Path: `src/api/app.py`
 
 ```python
-from .skills.tokens import is_search_intent
-is_search = is_search_intent(text)
+from .skills.policy import RouteKind, classify_request
 
-if is_search and os.environ.get("VOICEASSIST_DISABLE_WEBSEARCH", "").strip() != "1":
+decision = classify_request(text)
+
+if decision.kind is RouteKind.LOCAL_SKILL and decision.skill is not None:
+    reply = decision.skill.run()
+    return AssistResponse(
+        reply_text=reply,
+        meta={"source": "local-skill", "action": decision.skill.NAME},
+    )
+
+if decision.kind is RouteKind.TOOL_NEEDED and os.environ.get("VOICEASSIST_DISABLE_WEBSEARCH", "").strip() != "1":
     try:
         from .websearch import run_websearch
-        print("[api] using websearch path", flush=True)
-        reply = run_websearch(text)
+        reply = run_websearch(decision.routed_text)
         if reply:
             return AssistResponse(
                 reply_text=reply,
@@ -371,9 +357,10 @@ local device skills.
 
 For `voiceassist` today:
 
-- local skills are routed by deterministic string matching first
-- general Q&A goes directly to GPT from the voice bridge
-- search/weather goes through the API and uses OpenAI `web_search`
+- local skills still resolve through deterministic skill matching first
+- the shared classifier decides local skill vs tool-needed vs chat
+- general Q&A still goes directly to GPT from the voice bridge
+- search/weather still goes through the API and uses OpenAI `web_search`
 
 That split architecture is deliberate and should be kept in mind when adding new
 features.

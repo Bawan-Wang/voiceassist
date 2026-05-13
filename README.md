@@ -10,15 +10,18 @@ Microphone
   ▼
 bridge/voice_bridge.py   ← Silero VAD → STT (Sherpa-ONNX local) → wake word detection
   │
-  ├─ search / weather / browse ── POST /zero-assistant
+  ├─ local skill / search / weather / browse ── POST /zero-assistant
   │                                 ▼
-  │                               api/app.py (FastAPI) → OpenClaw Agent
+  │                               api/app.py (FastAPI) → shared classifier
+  │                                 ├─ local skill executor
+  │                                 ├─ OpenAI Responses + web_search
+  │                                 └─ plain OpenAI fallback
   │                                 ▼
   │                               reply_text back to bridge
   │                                 ▼
   │                               normalize spoken text → optional spoken rewrite → Piper
   │
-  └─ general Q&A ───────────────→ OpenAI GPT-4o-mini (direct, streaming in bridge)
+  └─ general Q&A / chat ───────→ OpenAI GPT-4o-mini (direct, streaming in bridge)
   │
   │  writes data/demo_state.json
   ▼
@@ -31,8 +34,8 @@ Speaker (ffplay ← local Piper playback)
 | Component | File | Role |
 |---|---|---|
 | Bunny UI | `ui/assistant_ui.py` | PyGame animated face, polls `data/demo_state.json` |
-| Voice Bridge | `bridge/voice_bridge.py` | Mic capture, Silero VAD, STT, wake word, GPT routing, search-reply speech cleanup, streaming TTS playback |
-| API Backend | `api/app.py` | FastAPI entrypoint for local intents plus OpenClaw/OpenAI routing when `/zero-assistant` is called directly |
+| Voice Bridge | `bridge/voice_bridge.py` | Mic capture, Silero VAD, STT, wake word, shared request classification for local-skill/search paths, direct streaming chat, search-reply speech cleanup, streaming TTS playback |
+| API Backend | `api/app.py` | FastAPI text entrypoint for `/zero-assistant`; runs shared classification plus local skill execution, OpenAI `web_search`, or plain OpenAI fallback |
 | Control Script | `rabbitctl.sh` | Unified start / stop / restart / status |
 | UI + Voice Config | `config.yaml` | UI settings plus `voiceBridge` runtime config for VAD/STT/TTS/routing/model selection |
 | Shared State | `data/demo_state.json` | Runtime state between bridge and UI (gitignored) |
@@ -119,18 +122,20 @@ Each phase change updates `data/demo_state.json`, which the PyGame UI picks up w
 
 ## Supported Commands
 
-- **Voice bridge: weather / search / browse** — *「幫我查」、「最新新聞」、「台北天氣」* routes to `api/app.py`, which then calls the OpenClaw Agent
+- **Voice bridge: local display commands** — *「打開相框 / 開啟 photoframe」* and *「打開兔兔 / 切回 bunny」* are classified by the shared routing policy, then routed to `api/app.py`
+- **Voice bridge: weather / search / browse** — *「幫我查」、「最新新聞」、「台北天氣」* routes to `api/app.py`, which then uses OpenAI `web_search`
 - **Voice bridge: general Q&A** — anything not classified as search is answered directly by `bridge/voice_bridge.py` via `GPT-4o-mini`
-- **Direct API: local display commands** — *「打開相框 / 開啟photoframe」* and *「打開兔兔 / 切回bunny」* are handled inside `api/app.py`
-- **Current limitation** — because the voice bridge only sends search-like prompts to `/zero-assistant`, those local display commands are currently available through the API path, but not through the default voice-bridge general-Q&A path
+- **Direct API: local display commands** — *「打開相框 / 開啟 photoframe」* and *「打開兔兔 / 切回 bunny」* are still handled inside `api/app.py`
 
 ## Voice Pipeline
 
 - **VAD**: `Silero VAD` (auto-downloaded on first run), fallback to `WebRTC VAD` if unavailable
 - **STT**: local `Sherpa-ONNX` (`sense_voice` int8 model, auto-downloaded on first run)
-- **Voice-bridge search path**: search intent → speak quick hint → `/zero-assistant` → OpenClaw Agent in `api/app.py` → local TTS text normalization → spoken-form rewrite for noisy results → `Piper`
+- **Shared classifier**: once text exists, `src/api/skills/policy.py` classifies it as local skill, tool-needed/search, or chat; the voice bridge passes `raw_transcript` so wake-strip recovery still works for local skills
+- **Voice-bridge local-skill path**: shared classifier → `/zero-assistant` → local skill executor in `api/app.py` → local `Piper`
+- **Voice-bridge search path**: tool-needed/search → speak quick hint → `/zero-assistant` → OpenAI `web_search` in `api/app.py` → local TTS text normalization → spoken-form rewrite for noisy results → `Piper`
 - **Voice-bridge general Q&A path**: direct `GPT-4o-mini` streaming response inside `bridge/voice_bridge.py`
-- **Direct API path**: requests sent straight to `/zero-assistant` still hit local command handlers first, then use OpenClaw-first routing when `ZERO_USE_OPENCLAW_AGENT=1`, with OpenAI fallback inside `api/app.py`
+- **Direct API path**: requests sent straight to `/zero-assistant` call the same shared classifier, then use local skill execution, OpenAI `web_search`, or plain OpenAI fallback inside `api/app.py`
 - **TTS**: local `Piper TTS`; search replies are normalized before playback and may be rewritten into a more spoken-friendly Traditional Chinese form before synthesis, while general Q&A is played sentence-by-sentence from the streaming GPT output
 
 ## Configuration

@@ -95,16 +95,15 @@ class BridgeConfig:
     stream_chunk_chars: int
 
 
-# exec-plan 007 + 014: lightweight local-skill / search-intent detection.
-# Imported lazily so that unit tests / scripts that import voice_bridge for
-# type checks do not pay the cost. Both helpers MUST stay cheap (string-only).
+# Keep the lightweight helper re-export for existing tests, but route through
+# the shared policy for actual execution decisions.
 try:
-    from src.api.skills.tokens import is_local_skill, is_search_intent  # noqa: F401
+    from src.api.skills.tokens import is_local_skill  # noqa: F401
 except Exception:  # pylint: disable=broad-except
     def is_local_skill(text: str) -> bool:  # type: ignore[no-redef]
         return False
-    def is_search_intent(text: str) -> bool:  # type: ignore[no-redef]
-        return False
+
+from src.api.skills.policy import RouteKind, classify_request
 
 
 def ensure_silero_model(model_path: Path, model_url: str) -> Optional[Path]:
@@ -313,24 +312,14 @@ class VoiceBridge:
                         continue
             print(f"[voice_bridge] Command: {command}")
 
-            # exec-plan 007: route local skills (open photoframe / bunny) to
-            # the API BEFORE search detection, so they never get streamed via
-            # GPT (which would just return chitchat about the request instead
-            # of actually executing it).
-            #
-            # Also check the raw transcript: the fuzzy wake-word stripper can
-            # accidentally eat the bunny noun (e.g. "兔兔助理切回兔兔" → command
-            # "切回" because the trailing 兔兔 matches a fuzzy wake variant).
-            local_text = None
-            if is_local_skill(command):
-                local_text = command
-            elif is_local_skill(transcript):
-                local_text = transcript
-                print("[voice_bridge] Local skill found in raw transcript (wake-word stripper ate it)")
-            if local_text is not None:
-                print(f"[voice_bridge] Local skill detected, routing to API: {local_text}")
-                update_state(self.cfg.state_path, "thinking", user_text=local_text, assistant_text="")
-                reply = self._reply_via_api(local_text)
+            decision = classify_request(command, raw_transcript=transcript)
+
+            if decision.kind is RouteKind.LOCAL_SKILL:
+                if decision.used_raw_transcript:
+                    print("[voice_bridge] Local skill found in raw transcript (wake-word stripper ate it)")
+                print(f"[voice_bridge] Local skill detected, routing to API: {decision.routed_text}")
+                update_state(self.cfg.state_path, "thinking", user_text=decision.routed_text, assistant_text="")
+                reply = self._reply_via_api(decision.routed_text)
                 if not reply:
                     update_state(self.cfg.state_path, "idle", assistant_text="抱歉，沒有聽清楚。")
                     continue
@@ -339,13 +328,12 @@ class VoiceBridge:
                 update_state(self.cfg.state_path, "idle", assistant_text=reply)
                 continue
 
-            searching = is_search_intent(command)
-            if searching:
+            if decision.kind is RouteKind.TOOL_NEEDED:
                 hint = self.cfg.search_hint
                 print(f"[voice_bridge] Search intent detected, speaking hint first")
-                update_state(self.cfg.state_path, "thinking", user_text=command, assistant_text=hint)
+                update_state(self.cfg.state_path, "thinking", user_text=decision.routed_text, assistant_text=hint)
                 self.speak(hint)
-                reply = self.generate_reply(command, search=True)
+                reply = self.generate_reply(decision.routed_text, search=True)
                 if not reply:
                     update_state(self.cfg.state_path, "idle", assistant_text="抱歉，沒有聽清楚。")
                     continue
@@ -354,9 +342,9 @@ class VoiceBridge:
                 update_state(self.cfg.state_path, "speaking", assistant_text=reply)
                 self.speak(spoken_reply)
             else:
-                update_state(self.cfg.state_path, "thinking", user_text=command, assistant_text="正在思考回覆…")
+                update_state(self.cfg.state_path, "thinking", user_text=decision.routed_text, assistant_text="正在思考回覆…")
 
-                reply = self.stream_reply_and_speak(command)
+                reply = self.stream_reply_and_speak(decision.routed_text)
                 if not reply:
                     update_state(self.cfg.state_path, "idle", assistant_text="抱歉，沒有聽清楚。")
                     continue

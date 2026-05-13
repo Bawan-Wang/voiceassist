@@ -11,20 +11,22 @@ bridge/voice_bridge.py
   - Silero VAD segments utterances (falls back to WebRTC VAD)
   - Local Sherpa-ONNX STT (sense_voice)
   - Wake word matching (3-tier: exact → token-combo → fuzzy)
-  - Detects search intent → speaks "我幫你查一下" before waiting
+  - Calls shared classify_request(...) after text exists
+  - Local skill / search → speaks hint if needed, then POSTs to api/app.py
   - General Q&A → direct GPT-4o-mini streaming response
-  - Does not send general Q&A or local display commands to `api/app.py`
+  - Does not send general Q&A to `api/app.py`
   - Search replies are normalized for TTS and may be rewritten into a speech-friendly form
   - Sentence-chunked local Piper TTS synthesis and playback via ffplay
      │
-     │  POST /zero-assistant  { "text": "..." }  (search / weather only)
+     │  POST /zero-assistant  { "text": "..." }  (local skill / tool-needed)
      ▼
 api/app.py  (FastAPI, 127.0.0.1:8000)
+  - Calls shared classify_request(text)
   - Local command intents first (open photoframe, open bunny UI)
   - Search/weather/browse → OpenAI Responses + `web_search` tool (006, ~3–8 s)
       └ on failure → plain OpenAI Responses fallback
   - Non-search → plain OpenAI Responses
-  - Returns { "reply_text": "...", "meta": { "source": "openai-websearch|fallback-openai|local-skill|local-command", "search": bool } }
+  - Returns { "reply_text": "...", "meta": { "source": "openai-websearch|fallback-openai|local-skill", "search": bool } }
      │
      │  writes data/demo_state.json  { phase, userText, assistantText }
      ├──────────────────────────────────────────────────────────────────►
@@ -56,44 +58,57 @@ There are currently two different routing entry paths in the repo:
 - `bridge/voice_bridge.py` is the default live voice runtime.
 - `api/app.py` is the direct HTTP entrypoint for `/zero-assistant`.
 
-They do **not** make identical routing decisions today.
+They now share the same text-classification policy, but they still do **not**
+start from the same runtime stage or use the same executors.
 
 For the canonical explanation of how these entrypoints differ before and after
 text exists, see [technical-concepts/entrypoints.md](technical-concepts/entrypoints.md).
+
+## Shared Classification, Separate Executors
+
+Both entrypoints now call `src/api/skills/policy.py::classify_request(...)`
+once text is available.
 
 ## Intent Routing in bridge/voice_bridge.py
 
 ```
 transcribed voice input
   │
-  ├─ contains search tokens
+  ├─ classify_request(..., raw_transcript=transcript) == LOCAL_SKILL
+  │      → POST `/zero-assistant`
+  │      → receive `reply_text`
+  │      → local Piper playback
+  │
+  ├─ classify_request(..., raw_transcript=transcript) == TOOL_NEEDED
   │      → `generate_reply(..., search=True)`
   │      → POST `/zero-assistant`
   │      → receive `reply_text`
   │      → normalize / optionally rewrite / Piper playback
   │
-  └─ everything else
+  └─ classify_request(..., raw_transcript=transcript) == CHAT
        → `stream_reply_and_speak()`
        → direct OpenAI GPT-4o-mini streaming response
 ```
 
-This means local intents defined in `api/app.py` are **not** reached by the default voice-bridge path unless the utterance is classified as search and forwarded to `/zero-assistant`.
+This means the bridge and API now agree on route kind for the same text, while
+the bridge still keeps its own direct streaming chat executor.
 
 ## Intent Routing in api/app.py
 
 ```
 text input
     │
-    ├─ "打開相框" / "開啟photoframe"  → local: open_photoframe()
-    ├─ "打開兔兔" / "切回bunny"       → local: open_bunny_ui()
-    │
-    └─ everything else
-           │
-           ├─ contains search tokens (查/搜尋/找/天氣/最新/新聞…)
-           │       ├─ try OpenAI Responses + `web_search` tool  (006, ~3–8 s)
-           │       └─ on failure / disabled → fall through to plain OpenAI fallback
-           │
-           └─ plain OpenAI GPT-4o-mini Responses fallback (final reply)
+    └─ `classify_request(text)`
+      │
+      ├─ LOCAL_SKILL
+      │      → local skill.run()
+      │
+      ├─ TOOL_NEEDED
+      │      ├─ try OpenAI Responses + `web_search` tool  (006, ~3–8 s)
+      │      └─ on failure / disabled → fall through to plain OpenAI fallback
+      │
+      └─ CHAT
+        → plain OpenAI GPT-4o-mini Responses fallback (final reply)
 ```
 
 Search replies then stay inside `bridge/voice_bridge.py` for a second stage:
@@ -122,4 +137,4 @@ Phases: `idle` → `listening` → `thinking` → `speaking` → `idle`
 - `models/` is intentionally gitignored; runtime assets stay local
 - General Q&A playback starts sentence-by-sentence rather than waiting for the full reply
 - Search playback adds a cleanup step before `Piper` so web-search results sound more natural when spoken
-- Current architecture is intentionally documented as split behavior: the voice bridge and direct API path are related, but not yet a single routing source of truth
+- The voice and HTTP entrypoints now share one routing source of truth after text exists, but they still keep different executors and different pre-text responsibilities

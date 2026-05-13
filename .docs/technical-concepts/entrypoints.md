@@ -1,7 +1,7 @@
 # Voice vs HTTP Entrypoints
 
 This page explains the two runtime entrypoints that exist in `voiceassist`
-today, before exec-plan 020 introduces a shared routing policy.
+today.
 
 If you want the answer to "what are the three routing paths after text already
 exists?", see [three-routing-paths.md](three-routing-paths.md). This page
@@ -20,9 +20,9 @@ They are related, but they do not begin from the same kind of input:
 - The voice runtime starts from raw microphone audio.
 - The HTTP endpoint starts from already-available text.
 
-They also do not make routing decisions in exactly the same place today.
-Some helper logic is shared, but the final branching still lives in two
-different call sites.
+They still begin from different stages of the pipeline, but once text is
+available they now share one request-classification function in
+`src/api/skills/policy.py`.
 
 ## Voice Entrypoint
 
@@ -65,13 +65,14 @@ entrypoint:
 - A raw-transcript local-skill fallback protects against the wake-stripper
   accidentally eating the noun in phrases like `兔兔助理切回兔兔`.
 
-### Voice Routing Today
+### Voice Routing Once Text Exists
 
-Once `VoiceBridge.run()` has text, it currently makes its own routing decision:
+Once `VoiceBridge.run()` has text, it calls the shared classifier:
 
-1. local skill pre-check with `src/api/skills/tokens.py`
-2. search-intent pre-check with `src/api/skills/tokens.py`
-3. direct GPT chat path for everything else
+1. `classify_request(command, raw_transcript=transcript)`
+2. `RouteKind.LOCAL_SKILL` -> `_reply_via_api()`
+3. `RouteKind.TOOL_NEEDED` -> search hint + `_reply_via_api()`
+4. `RouteKind.CHAT` -> `stream_reply_and_speak()`
 
 That means the voice runtime can choose between two execution styles:
 
@@ -103,7 +104,7 @@ local TTS without waiting for the API layer.
 "兔兔助理幫我查新北天氣"
   -> wake word matched
   -> command = "幫我查新北天氣"
-  -> is_search_intent(command) == True
+  -> classify_request(...) returns TOOL_NEEDED
   -> speak search hint
   -> _reply_via_api(command)
   -> POST /zero-assistant
@@ -120,8 +121,7 @@ local TTS without waiting for the API layer.
 "兔兔助理你覺得 Docker 是什麼"
   -> wake word matched
   -> command extracted
-  -> not local skill
-  -> not search intent
+  -> classify_request(...) returns CHAT
   -> stream_reply_and_speak(command)
   -> direct GPT streaming response
   -> local TTS plays sentence chunks as they become ready
@@ -146,15 +146,14 @@ It receives text that already exists. Because of that, it does not own:
 ```text
 HTTP POST /zero-assistant
   -> AssistRequest(text=...)
-  -> match_skill(text)
-  -> is_search_intent(text)
+  -> classify_request(text)
   -> run_websearch() or plain OpenAI fallback
   -> JSON response
 ```
 
-### HTTP Routing Order Today
+### HTTP Routing Order
 
-The HTTP endpoint currently routes in this order:
+The HTTP endpoint now routes in this order via the shared policy:
 
 1. `match_skill(text)`
 2. `is_search_intent(text)`
@@ -193,27 +192,28 @@ POST /zero-assistant {"text": "你好"}
 
 ## Shared Helpers and Ownership
 
-The repo already shares some modules between the two entrypoints, but not a
-single routing policy function.
+The repo now shares a routing policy module between the two entrypoints.
 
 | Module | What It Owns | What It Does Not Own |
 |---|---|---|
+| `src/api/skills/policy.py` | Shared `classify_request()` policy and `RouteDecision` / `RouteKind` | Wake-word handling, HTTP response formatting, TTS, direct GPT execution |
 | `src/api/skills/tokens.py` | Cheap string helpers such as `is_local_skill()` and `is_search_intent()` | Wake-word logic, HTTP request handling, direct GPT chat execution |
 | `src/api/skills/__init__.py` | Local skill registry and `match_skill()` dispatcher | Audio pipeline, shared end-to-end routing policy, general chat |
 | `src/api/websearch.py` | OpenAI Responses `web_search` tool call | Wake-word handling, TTS, direct voice chat streaming |
 
 Two details matter here:
 
-- `voice_bridge.py` imports the cheap token helpers directly.
-- The voice runtime reaches `match_skill()` and `run_websearch()` indirectly by
-  posting text to `POST /zero-assistant`.
+- `voice_bridge.py` and `api/app.py` both call `classify_request()`.
+- The voice runtime still reaches `match_skill()` and `run_websearch()`
+  indirectly by posting text to `POST /zero-assistant` for local-skill and
+  tool-needed requests.
 
-So the repository shares helper surfaces, but not one unified classifier that
-both entrypoints call in the same way.
+So the repository now shares one classifier, while still keeping separate
+executors on the voice and HTTP sides.
 
-## Current Divergence Points
+## Current Differences
 
-Today the two entrypoints still diverge in important ways:
+The two entrypoints still differ in important ways even after 020:
 
 | Topic | Voice Runtime | HTTP Endpoint |
 |---|---|---|
@@ -222,7 +222,7 @@ Today the two entrypoints still diverge in important ways:
 | Wake-word handling | Yes | No |
 | Pending follow-up after wake | Yes | No |
 | Auto-route without wake | Yes | No |
-| Raw-transcript local-skill fallback | Yes | No |
+| Raw-transcript local-skill fallback | Yes, via `classify_request(..., raw_transcript=...)` | No |
 | Direct LLM usage | Yes, for normal chat | Yes, as non-search fallback |
 | Uses local HTTP API | Sometimes | It is the HTTP API |
 | TTS ownership | Yes | No |
@@ -244,8 +244,8 @@ happens after text is already available.
 This page describes what happens before that point and where the request first
 enters the system.
 
-## Pre-020 Note
+## Post-020 Note
 
-This document intentionally describes the pre-020 architecture. Today the repo
-shares helper modules, but the final routing decision still lives in separate
-entrypoints.
+This document reflects the architecture after exec-plan 020. The repo now
+shares request classification, but the voice runtime and HTTP endpoint still
+start from different stages and keep separate executors.
