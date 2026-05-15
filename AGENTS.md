@@ -13,6 +13,7 @@ Before answering any non-trivial request, consult these files:
 - `.docs/context.md` — current working context / where we left off
 - `.docs/architecture.md` — system design
 - `.docs/skill.md` — repo-specific tips and tricks
+- `.docs/rules.md` — coding conventions plus currently-known repo deviations
 - `.docs/tech-debt.md` — known issues (check before any refactor)
 - `.docs/exec-plans/` (excluding `done/`) — active execution plans
 - `.docs/product-specs/` — required reading when implementing a new feature
