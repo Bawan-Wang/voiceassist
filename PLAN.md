@@ -41,10 +41,45 @@ tests/                       Pytest harness
 | 19 | Add GitHub-hosted CI + code scanning baseline (exec-plan 018A) | ✅ Done |
 | 20 | Add Raspberry Pi self-hosted hardware smoke workflow (exec-plan 018B) | ✅ Done |
 | 21 | Shared routing policy (exec-plan 020) | ✅ Done |
+| 22 | Plan time queries, reminders, and memory as the next product surface | 📝 Planned |
 
 ## Active Exec Plans
 
 None.
+
+## Next Product Work
+
+The next planned user-facing capability set is:
+
+1. Time queries
+2. Reminders
+3. Memory
+
+These three areas are intentionally sequenced in that order:
+
+- Time queries are the smallest deterministic skill surface and should be the
+  first implementation target.
+- Reminders depend on time parsing, normalization, and delivery behavior, so
+  they should follow after the time-query rules are stable.
+- Memory should come last because it changes cross-feature behavior and needs a
+  tighter product boundary than the first two features.
+
+Current planning status:
+
+- `.docs/product-specs/time-queries.md` exists as a planned skeleton and still
+  needs to be expanded into a full implementation-ready spec.
+- `.docs/product-specs/reminders.md` exists as a planned skeleton and still
+  needs to be expanded into a full implementation-ready spec.
+- `.docs/product-specs/memory.md` exists as a planned skeleton and still needs
+  to be expanded into a full implementation-ready spec.
+
+Do not start implementation from these skeleton specs alone. The expected flow
+for this product area is:
+
+1. Complete `time-queries.md` as the first full spec.
+2. Complete `reminders.md` with explicit confirmation, persistence, and due-time behavior.
+3. Complete `memory.md` with a narrow first-phase scope.
+4. After the specs are fully defined, create the corresponding exec-plan(s) and implement in the same order.
 
 ## Done (archived)
 
