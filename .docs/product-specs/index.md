@@ -17,6 +17,14 @@ then tell the agent: "請實作 docs/product-specs/xxx.md"
 | [`ui-states.md`](ui-states.md) | idle/listening/thinking/speaking — triggers, colors, `demo_state.json` contract |
 | [`local-commands.md`](local-commands.md) | Photoframe and bunny UI switch — trigger phrases, actions, debounce behaviour |
 
+## Planned Specs
+
+| File | Description |
+|------|-------------|
+| [`time-queries.md`](time-queries.md) | Planned skeleton for current time/date/weekday queries plus selected timezone and city aliases |
+| [`reminders.md`](reminders.md) | Planned skeleton for one-time reminders, relative reminders, confirmation flow, persistence, and due-time delivery |
+| [`memory.md`](memory.md) | Planned skeleton for narrow preference/profile memory and its effect on time/reminder defaults |
+
 ## How to Write a Spec
 
 Copy this template and fill it in:
