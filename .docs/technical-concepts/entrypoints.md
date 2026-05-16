@@ -8,6 +8,9 @@ exists?", see [three-routing-paths.md](three-routing-paths.md). This page
 starts one stage earlier and answers a different question: how a request enters
 the system in the first place.
 
+If you want the time-query internals specifically, see
+[time-queries.md](time-queries.md).
+
 ## Why There Are Two Entrypoints
 
 The repository currently has two ways to start request handling:
@@ -71,12 +74,13 @@ Once `VoiceBridge.run()` has text, it calls the shared classifier:
 
 1. `classify_request(command, raw_transcript=transcript)`
 2. `RouteKind.LOCAL_SKILL` -> `_reply_via_api()`
-3. `RouteKind.TOOL_NEEDED` -> search hint + `_reply_via_api()`
-4. `RouteKind.CHAT` -> `stream_reply_and_speak()`
+3. `RouteKind.TIME_QUERY` -> `_reply_via_api()`
+4. `RouteKind.TOOL_NEEDED` -> search hint + `_reply_via_api()`
+5. `RouteKind.CHAT` -> `stream_reply_and_speak()`
 
 That means the voice runtime can choose between two execution styles:
 
-- `_reply_via_api()` for local-skill and search-style requests
+- `_reply_via_api()` for local-skill, time-query, and search-style requests
 - `_reply_via_gpt4o_mini()` or `stream_reply_and_speak()` for direct LLM chat
 
 For normal conversation, the voice runtime bypasses the local HTTP API and
@@ -147,7 +151,7 @@ It receives text that already exists. Because of that, it does not own:
 HTTP POST /zero-assistant
   -> AssistRequest(text=...)
   -> classify_request(text)
-  -> run_websearch() or plain OpenAI fallback
+  -> local skill or deterministic time query or run_websearch() or plain OpenAI fallback
   -> JSON response
 ```
 
@@ -156,8 +160,9 @@ HTTP POST /zero-assistant
 The HTTP endpoint now routes in this order via the shared policy:
 
 1. `match_skill(text)`
-2. `is_search_intent(text)`
-3. plain OpenAI fallback
+2. `parse_time_query(text)`
+3. `is_search_intent(text)`
+4. plain OpenAI fallback
 
 That means the HTTP layer is the canonical execution owner for deterministic
 local skills, but it is not the only entrypoint in the repo.
@@ -176,6 +181,9 @@ local skills, but it is not the only entrypoint in the repo.
   }
 }
 ```
+
+Time-query replies also use this JSON envelope and add `meta.action =
+"time_query"` plus `time_kind` and `timezone` fields.
 
 For a direct HTTP caller, that JSON response is the final output. Unlike the
 voice runtime, the HTTP entrypoint does not speak the answer.

@@ -8,6 +8,9 @@ long-lived voice runtime versus the HTTP text endpoint, read
 [entrypoints.md](entrypoints.md) first. This page starts only after text is
 already available.
 
+If you want the dedicated implementation details for deterministic clock / date
+/ weekday handling, read [time-queries.md](time-queries.md).
+
 The important point is that this repository does **not** use one single
 "LLM decides everything" flow.
 
@@ -23,11 +26,11 @@ HTTP endpoint still keep separate executors after that classification step.
 
 | Path | Trigger | Goes through API | Uses LLM | Uses tool | Typical use |
 |---|---|---:|---:|---:|---|
-| Local skill | `RouteKind.LOCAL_SKILL` | Yes | No | No | Open photoframe, switch back to bunny, future deterministic commands like telling time |
+| Deterministic local | `RouteKind.LOCAL_SKILL` or `RouteKind.TIME_QUERY` | Yes | No | No | Open photoframe, switch back to bunny, current time / date / weekday |
 | General Q&A | `RouteKind.CHAT` | No | Yes | No | Chitchat, explanation, general knowledge |
 | Search / weather | `RouteKind.TOOL_NEEDED` | Yes | Yes | Yes | Real-time info, latest news, weather, browsing |
 
-## Path 1: Local Skill Fast Path
+## Path 1: Deterministic Local Fast Path
 
 ### Intent
 
@@ -37,33 +40,35 @@ Examples:
 
 - `打開相框`
 - `切回兔兔`
-- A future `現在幾點` / `今天星期幾` skill
+- `現在幾點`
+- `今天星期幾`
 
 ### Flow
 
 ```text
 User speech
   -> STT transcript
-    -> classify_request(...)
+        -> classify_request(...) returns LOCAL_SKILL or TIME_QUERY
   -> POST /zero-assistant
-  -> api/app.py runs match_skill(...)
-  -> matching skill.run()
+    -> api/app.py runs match_skill(...) or render_time_query_reply(...)
   -> reply_text returned
   -> voice bridge speaks the reply
 ```
 
 ### Why this path exists
 
-The repository intentionally avoids sending local device actions to GPT first.
-That reduces latency and avoids the model answering *about* the command instead
-of actually executing it.
+The repository intentionally avoids sending deterministic device actions and
+clock/date answers to GPT first. That reduces latency and avoids the model
+answering *about* the command instead of executing it or guessing clock data.
 
 ### Main code paths
 
 - `src/api/skills/tokens.py`
+- `src/api/skills/time_query.py`
 - `src/bridge/voice_bridge.py`
 - `src/api/app.py`
 - `src/api/skills/__init__.py`
+- `src/api/skills/policy.py`
 
 ### Key snippet: pure-string local-skill detection
 
@@ -87,11 +92,17 @@ Path: `src/api/skills/policy.py`
 decision = classify_request(command, raw_transcript=transcript)
 if decision.kind is RouteKind.LOCAL_SKILL:
     reply = self._reply_via_api(decision.routed_text)
+elif decision.kind is RouteKind.TIME_QUERY:
+    reply = self._reply_via_api(decision.routed_text)
 elif decision.kind is RouteKind.TOOL_NEEDED:
     reply = self.generate_reply(decision.routed_text, search=True)
 else:
     reply = self.stream_reply_and_speak(decision.routed_text)
 ```
+
+Time queries and local device skills both stay on the deterministic local path,
+but time queries use a dedicated `RouteKind.TIME_QUERY` branch so the API can
+attach time-specific metadata.
 
 ### Key snippet: API dispatches to the local skill registry first
 
@@ -106,6 +117,27 @@ if decision.kind is RouteKind.LOCAL_SKILL and decision.skill is not None:
         meta={"source": "local-skill", "action": decision.skill.NAME},
     )
 ```
+
+### Key snippet: API executes deterministic time queries locally
+
+Path: `src/api/app.py`
+
+```python
+if decision.kind is RouteKind.TIME_QUERY and decision.time_query is not None:
+    reply = render_time_query_reply(decision.time_query)
+    return AssistResponse(
+        reply_text=reply,
+        meta={
+            "source": "local-skill",
+            "action": "time_query",
+            "time_kind": decision.time_query.kind,
+            "timezone": decision.time_query.timezone,
+        },
+    )
+```
+
+For the detailed parser / renderer internals behind this branch, see
+[time-queries.md](time-queries.md).
 
 ### Key snippet: manual skill registry
 
