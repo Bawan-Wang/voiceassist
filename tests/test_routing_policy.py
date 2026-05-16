@@ -30,6 +30,13 @@ class TestRoutingPolicy:
         assert decision.time_query.timezone == "Asia/Tokyo"
         assert decision.routed_text == "日本現在幾點"
 
+    def test_simplified_time_query_becomes_time_query_route(self):
+        decision = classify_request("请问现在几点")
+
+        assert decision.kind == RouteKind.TIME_QUERY
+        assert decision.time_query is not None
+        assert decision.time_query.timezone == "Asia/Taipei"
+
     def test_chat_becomes_chat(self):
         decision = classify_request("你好")
 

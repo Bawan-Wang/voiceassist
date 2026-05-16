@@ -10,23 +10,27 @@ LOCAL_TIMEZONE = "Asia/Taipei"
 
 _ALIASES = {
     "台灣": ("Asia/Taipei", "台灣"),
+    "台湾": ("Asia/Taipei", "台灣"),
     "台北": ("Asia/Taipei", "台北"),
     "taiwan": ("Asia/Taipei", "台灣"),
     "taipei": ("Asia/Taipei", "台北"),
     "日本": ("Asia/Tokyo", "日本"),
     "東京": ("Asia/Tokyo", "東京"),
+    "东京": ("Asia/Tokyo", "東京"),
     "japan": ("Asia/Tokyo", "日本"),
     "tokyo": ("Asia/Tokyo", "東京"),
     "紐約": ("America/New_York", "紐約"),
+    "纽约": ("America/New_York", "紐約"),
     "new york": ("America/New_York", "紐約"),
     "london": ("Europe/London", "倫敦"),
     "倫敦": ("Europe/London", "倫敦"),
+    "伦敦": ("Europe/London", "倫敦"),
 }
 
-_TIME_TOKENS = ("幾點", "時間", "time", "what time")
-_DATE_TOKENS = ("幾號", "日期", "date")
-_WEEKDAY_TOKENS = ("星期幾", "禮拜幾", "週幾", "weekday")
-_LOCAL_ALIASES = ("台灣", "台北", "taiwan", "taipei")
+_TIME_TOKENS = ("幾點", "几点", "時間", "时间", "time", "what time")
+_DATE_TOKENS = ("幾號", "几号", "日期", "date")
+_WEEKDAY_TOKENS = ("星期幾", "星期几", "禮拜幾", "礼拜几", "週幾", "周几", "weekday")
+_LOCAL_ALIASES = ("台灣", "台湾", "台北", "taiwan", "taipei")
 _FILLER_PREFIXES = (
     "兔兔助理",
     "幫我看一下",
@@ -34,11 +38,18 @@ _FILLER_PREFIXES = (
     "幫我查一下",
     "幫我查",
     "請問",
+    "请问",
+    "帮我看一下",
+    "帮我看",
+    "帮我查一下",
+    "帮我查",
     "可以告訴我",
+    "可以告诉我",
     "告訴我",
+    "告诉我",
     "我想知道",
 )
-_GENERIC_PREFIXES = ("現在", "今天", "目前", "now", "today")
+_GENERIC_PREFIXES = ("現在", "现在", "今天", "目前", "now", "today")
 _TRAILING_FILLERS = "呢嗎呀啊了?？!！,，.。:： "
 
 
@@ -60,6 +71,7 @@ def _resolve_timezone_label(text: str) -> tuple[str, str]:
 
 def _trim_candidate(text: str) -> str:
     candidate = text.strip(_TRAILING_FILLERS)
+    candidate = re.sub(r"^[^，,。.!！？?\s]{1,8}助理[，,、。.!！？?\s]*", "", candidate)
     for prefix in _FILLER_PREFIXES:
         if candidate.startswith(prefix):
             candidate = candidate[len(prefix):].lstrip(_TRAILING_FILLERS)
@@ -71,17 +83,21 @@ def _extract_unknown_place(text: str, kind: str) -> str | None:
     if kind == "time":
         patterns = (
             r"(?P<place>.+?)現在幾點(?:了)?",
+            r"(?P<place>.+?)现在几点(?:了)?",
             r"(?P<place>.+?)時間(?:呢|嗎|呀|啊|了)?$",
+            r"(?P<place>.+?)时间(?:呢|吗|呀|啊|了)?$",
             r"what time(?: is it)? in (?P<place>[a-z ]+)$",
         )
     elif kind == "date":
         patterns = (
             r"(?P<place>.+?)今天幾號",
+            r"(?P<place>.+?)今天几号",
             r"date in (?P<place>[a-z ]+)$",
         )
     else:
         patterns = (
             r"(?P<place>.+?)(?:今天)?(?:星期幾|禮拜幾|週幾)",
+            r"(?P<place>.+?)(?:今天)?(?:星期几|礼拜几|周几)",
             r"weekday in (?P<place>[a-z ]+)$",
         )
 
@@ -107,7 +123,7 @@ def parse_time_query(text: str) -> TimeQueryIntent | None:
         return None
     normalized = text.strip()
     lower = normalized.lower()
-    has_now = any(tok in normalized or tok in lower for tok in ("現在", "現在", "目前", "now", "today"))
+    has_now = any(tok in normalized or tok in lower for tok in ("現在", "现在", "目前", "now", "today"))
 
     kind: str | None = None
     if any(tok in normalized or tok in lower for tok in _WEEKDAY_TOKENS):

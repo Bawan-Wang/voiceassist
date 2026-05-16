@@ -115,6 +115,14 @@ class TestTimeQueries:
         assert data["meta"]["action"] == "time_query"
         assert data["meta"]["time_kind"] == "date"
 
+    def test_simplified_time_query_uses_local_skill_path(self, client):
+        r = client.post("/zero-assistant", json={"text": "请问现在几点"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["meta"]["source"] == "local-skill"
+        assert data["meta"]["action"] == "time_query"
+        assert data["meta"]["timezone"] == "Asia/Taipei"
+
     def test_unknown_place_time_query_asks_for_clarification(self, client):
         r = client.post("/zero-assistant", json={"text": "巴黎現在幾點"})
         assert r.status_code == 200

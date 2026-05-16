@@ -17,6 +17,18 @@ class TestTimeQueryParser:
         assert intent.kind == "time"
         assert intent.timezone == "Asia/Tokyo"
 
+    def test_parse_simplified_local_time_query(self):
+        intent = parse_time_query("请问现在几点")
+        assert intent is not None
+        assert intent.kind == "time"
+        assert intent.timezone == "Asia/Taipei"
+
+    def test_parse_simplified_named_timezone_query(self):
+        intent = parse_time_query("东京现在几点")
+        assert intent is not None
+        assert intent.kind == "time"
+        assert intent.timezone == "Asia/Tokyo"
+
     def test_non_time_text_returns_none(self):
         assert parse_time_query("幫我查台北天氣") is None
         assert parse_time_query("你好") is None
@@ -35,6 +47,19 @@ class TestTimeQueryParser:
         assert intent.kind == "time"
         assert intent.timezone is None
         assert intent.label == "巴黎"
+
+    def test_simplified_unknown_place_requires_clarification(self):
+        intent = parse_time_query("巴黎现在几点")
+        assert intent is not None
+        assert intent.kind == "time"
+        assert intent.timezone is None
+        assert intent.label == "巴黎"
+
+    def test_wake_prefixed_simplified_time_query_stays_local(self):
+        intent = parse_time_query("兔助理，请问现在几点")
+        assert intent is not None
+        assert intent.kind == "time"
+        assert intent.timezone == "Asia/Taipei"
 
 
 class TestTimeQueryRenderer:
