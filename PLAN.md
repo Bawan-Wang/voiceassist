@@ -45,7 +45,7 @@ tests/                       Pytest harness
 
 ## Active Exec Plans
 
-None.
+- [021 — Implement Time Queries](.docs/exec-plans/021-implement-time-queries.md) — Planned 📝
 
 ## Next Product Work
 
