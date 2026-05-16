@@ -7,7 +7,10 @@
 
 ## Summary
 
-Once text is available, the system classifies it into one of three intent categories and routes it to the appropriate handler — local execution, OpenAI websearch (with plain OpenAI fallback), or plain OpenAI GPT-4o-mini.
+Once text is available, the system classifies it into route categories and sends
+the request to the matching handler: deterministic local execution
+(including time queries), OpenAI websearch (with plain OpenAI fallback), or plain
+OpenAI GPT-4o-mini.
 
 This document starts at the text-routing stage. The voice runtime and the HTTP
 endpoint still do not enter the system at the same stage, but after 020 they do
@@ -29,14 +32,18 @@ shared `classify_request(text, raw_transcript=None)`
   │           meta.source = "local-skill", meta.action = NAME
   │           (voice bridge may use `raw_transcript` fallback for this branch)
   │
-  ├─ 2. Search intent? (see token list below)
+  ├─ 2. Time query? (`現在幾點` / `今天幾號` / `今天星期幾` / named timezone)
+  │  └─ YES → deterministic formatter in `src/api/skills/time_query.py`
+  │           meta.source = "local-skill", meta.action = "time_query"
+  │
+  ├─ 3. Search intent? (see token list below)
   │  └─ YES → POST /zero-assistant
   │           ├─ try OpenAI Responses + `web_search` tool   (~3–8 s, 006)
   │           │     └─ success → meta.source = "openai-websearch"
   │           └─ fallback to plain GPT-4o-mini Responses
   │                 └─ meta.source = "fallback-openai"
   │
-  └─ 3. General Q&A
+  └─ 4. General Q&A
      ├─ Voice bridge path → direct GPT-4o-mini streaming call
      └─ API direct path   → plain GPT-4o-mini Responses (same fallback engine as search)
 ```
@@ -56,6 +63,11 @@ A command is classified as **search intent** if it contains any of the following
 ### Local Commands
 - Classified centrally in `src/api/skills/policy.py`, executed in `src/api/app.py` with no LLM call
 - See [`local-commands.md`](local-commands.md) for full trigger and reply spec
+
+### Time Queries (021)
+- Classified centrally in `src/api/skills/policy.py` as `RouteKind.TIME_QUERY`
+- Executed deterministically by `src/api/skills/time_query.py` (no LLM call)
+- API metadata: `meta.source="local-skill"`, `meta.action="time_query"`
 
 ### OpenAI Websearch (primary, 006)
 - Module: `src/api/websearch.py`
@@ -86,6 +98,7 @@ A command is classified as **search intent** if it contains any of the following
   "reply_text": "...",
   "meta": {
     "source": "local-skill" | "openai-websearch" | "fallback-openai",
+    "action": "open_photoframe" | "open_bunny" | "time_query",
     "search": true | false
   }
 }
@@ -107,3 +120,4 @@ A command is classified as **search intent** if it contains any of the following
 - Multi-turn conversation memory
 - Intent classification via an ML model
 - Routing based on user identity
+

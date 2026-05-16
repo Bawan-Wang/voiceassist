@@ -36,6 +36,12 @@ class TestLocalSkillDetection:
         assert decision.kind == RouteKind.LOCAL_SKILL
         assert decision.routed_text == "打開相框"
 
+    def test_voice_bridge_classifies_time_query(self):
+        decision = voice_bridge.classify_request("東京時間呢")
+        assert decision.kind == RouteKind.TIME_QUERY
+        assert decision.time_query is not None
+        assert decision.time_query.timezone == "Asia/Tokyo"
+
 
 class TestWakeStripperRecovery:
     """Regression: the fuzzy wake-word stripper can accidentally eat the

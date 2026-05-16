@@ -54,6 +54,20 @@ def zero_assistant(req: AssistRequest):
             meta={"source": "local-skill", "action": decision.skill.NAME},
         )
 
+    if decision.kind is RouteKind.TIME_QUERY and decision.time_query is not None:
+        from .skills.time_query import render_time_query_reply
+
+        reply = render_time_query_reply(decision.time_query)
+        return AssistResponse(
+            reply_text=reply,
+            meta={
+                "source": "local-skill",
+                "action": "time_query",
+                "time_kind": decision.time_query.kind,
+                "timezone": decision.time_query.timezone,
+            },
+        )
+
     # Exec-plan 006: for search/weather, prefer fast OpenAI Responses + web_search tool.
     # On failure, fall through to the plain OpenAI fallback below.
     if decision.kind is RouteKind.TOOL_NEEDED and os.environ.get("VOICEASSIST_DISABLE_WEBSEARCH", "").strip() != "1":

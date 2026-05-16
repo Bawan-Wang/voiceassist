@@ -22,6 +22,14 @@ class TestRoutingPolicy:
         assert decision.is_search is True
         assert decision.used_raw_transcript is False
 
+    def test_time_query_becomes_time_query_route(self):
+        decision = classify_request("日本現在幾點")
+
+        assert decision.kind == RouteKind.TIME_QUERY
+        assert decision.time_query is not None
+        assert decision.time_query.timezone == "Asia/Tokyo"
+        assert decision.routed_text == "日本現在幾點"
+
     def test_chat_becomes_chat(self):
         decision = classify_request("你好")
 

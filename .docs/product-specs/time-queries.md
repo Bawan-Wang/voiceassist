@@ -1,7 +1,7 @@
 # Spec: Time Queries
 
 **Module:** `src/api/skills/`, `src/api/app.py`, `src/bridge/voice_bridge.py`
-**Status:** Planned
+**Status:** Implemented ✅
 
 ---
 
@@ -9,6 +9,10 @@
 
 The assistant answers current time, date, weekday, and selected timezone-aware
 time questions such as `現在幾點` and `日本現在幾點`.
+
+After exec-plan 021, these queries are classified by the shared routing policy
+and answered deterministically from local Python `datetime` + `zoneinfo`
+without an LLM generating the clock value.
 
 This spec is intentionally limited to answering time-related questions. It does
 not cover reminder creation or persistent user memory.
@@ -99,6 +103,20 @@ Suggested starting aliases:
 If clarification is required, the response should remain on the local-skill
 path and return a short clarification prompt.
 
+Example clarification response:
+
+```json
+{
+  "reply_text": "抱歉，巴黎的時區我還不確定，你可以換個地名說法嗎？",
+  "meta": {
+    "source": "local-skill",
+    "action": "time_query",
+    "time_kind": "time",
+    "timezone": null
+  }
+}
+```
+
 ---
 
 ## Relationship To Other Specs
@@ -109,13 +127,12 @@ path and return a short clarification prompt.
 
 ---
 
-## Open Questions
+## Implementation Notes
 
-- Which timezone and city aliases should be in the first supported set?
-- Should unknown place names fall back to a clarification question or a polite
-  failure reply?
-- Should weekday/date queries share the same skill module or be split into a
-  separate internal handler?
+- The current implementation lives in `src/api/skills/time_query.py`.
+- Routing is shared through `src/api/skills/policy.py` as `RouteKind.TIME_QUERY`.
+- Unknown place names do not silently fall back to the local timezone; they
+  return a clarification prompt on the same local-skill path.
 
 ---
 

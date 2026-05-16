@@ -42,10 +42,11 @@ tests/                       Pytest harness
 | 20 | Add Raspberry Pi self-hosted hardware smoke workflow (exec-plan 018B) | ✅ Done |
 | 21 | Shared routing policy (exec-plan 020) | ✅ Done |
 | 22 | Plan time queries, reminders, and memory as the next product surface | 📝 Planned |
+| 23 | Implement deterministic time queries (exec-plan 021) | ✅ Done |
 
 ## Active Exec Plans
 
-- [021 — Implement Time Queries](.docs/exec-plans/021-implement-time-queries.md) — Planned 📝
+None.
 
 ## Next Product Work
 
@@ -66,8 +67,8 @@ These three areas are intentionally sequenced in that order:
 
 Current planning status:
 
-- `.docs/product-specs/time-queries.md` exists as a planned skeleton and still
-  needs to be expanded into a full implementation-ready spec.
+- `.docs/product-specs/time-queries.md` has been implemented via
+  exec-plan 021.
 - `.docs/product-specs/reminders.md` exists as a planned skeleton and still
   needs to be expanded into a full implementation-ready spec.
 - `.docs/product-specs/memory.md` exists as a planned skeleton and still needs
@@ -76,10 +77,9 @@ Current planning status:
 Do not start implementation from these skeleton specs alone. The expected flow
 for this product area is:
 
-1. Complete `time-queries.md` as the first full spec.
-2. Complete `reminders.md` with explicit confirmation, persistence, and due-time behavior.
-3. Complete `memory.md` with a narrow first-phase scope.
-4. After the specs are fully defined, create the corresponding exec-plan(s) and implement in the same order.
+1. Complete `reminders.md` with explicit confirmation, persistence, and due-time behavior.
+2. Complete `memory.md` with a narrow first-phase scope.
+3. After the specs are fully defined, create the corresponding exec-plan(s) and implement in the same order.
 
 ## Done (archived)
 
@@ -94,4 +94,5 @@ See `.docs/exec-plans/done/` — includes 001 (env), 002 (vlm-bridge), 003
 018A (github-hosted-ci-and-code-scanning-baseline),
 018B (raspberry-pi-self-hosted-hardware-smoke),
 019 (document-voice-vs-http-entrypoints),
-020 (shared-routing-policy).
+020 (shared-routing-policy),
+021 (implement-time-queries).

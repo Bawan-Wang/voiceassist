@@ -328,6 +328,18 @@ class VoiceBridge:
                 update_state(self.cfg.state_path, "idle", assistant_text=reply)
                 continue
 
+            if decision.kind is RouteKind.TIME_QUERY:
+                print(f"[voice_bridge] Time query detected, routing to API: {decision.routed_text}")
+                update_state(self.cfg.state_path, "thinking", user_text=decision.routed_text, assistant_text="")
+                reply = self._reply_via_api(decision.routed_text)
+                if not reply:
+                    update_state(self.cfg.state_path, "idle", assistant_text="抱歉，沒有聽清楚。")
+                    continue
+                update_state(self.cfg.state_path, "speaking", assistant_text=reply)
+                self.speak(reply)
+                update_state(self.cfg.state_path, "idle", assistant_text=reply)
+                continue
+
             if decision.kind is RouteKind.TOOL_NEEDED:
                 hint = self.cfg.search_hint
                 print(f"[voice_bridge] Search intent detected, speaking hint first")

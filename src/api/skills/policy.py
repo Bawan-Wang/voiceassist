@@ -6,10 +6,12 @@ from enum import Enum
 from typing import Any
 
 from .tokens import is_search_intent
+from .time_query import TimeQueryIntent, parse_time_query
 
 
 class RouteKind(str, Enum):
     LOCAL_SKILL = "local_skill"
+    TIME_QUERY = "time_query"
     TOOL_NEEDED = "tool_needed"
     CHAT = "chat"
 
@@ -19,6 +21,7 @@ class RouteDecision:
     kind: RouteKind
     routed_text: str
     skill: Any | None = None
+    time_query: TimeQueryIntent | None = None
     is_search: bool = False
     used_raw_transcript: bool = False
 
@@ -72,6 +75,14 @@ def classify_request(text: str, *, raw_transcript: str | None = None) -> RouteDe
                 skill=raw_skill,
                 used_raw_transcript=True,
             )
+
+    time_query = parse_time_query(normalized_text)
+    if time_query is not None:
+        return RouteDecision(
+            kind=RouteKind.TIME_QUERY,
+            routed_text=normalized_text,
+            time_query=time_query,
+        )
 
     if is_search_intent(normalized_text):
         return RouteDecision(

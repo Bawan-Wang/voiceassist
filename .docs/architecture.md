@@ -22,7 +22,7 @@ bridge/voice_bridge.py
      ▼
 api/app.py  (FastAPI, 127.0.0.1:8000)
   - Calls shared classify_request(text)
-  - Local command intents first (open photoframe, open bunny UI)
+  - Deterministic local intents first (local skills + time queries)
   - Search/weather/browse → OpenAI Responses + `web_search` tool (006, ~3–8 s)
       └ on failure → plain OpenAI Responses fallback
   - Non-search → plain OpenAI Responses
@@ -79,6 +79,11 @@ transcribed voice input
   │      → receive `reply_text`
   │      → local Piper playback
   │
+  ├─ classify_request(..., raw_transcript=transcript) == TIME_QUERY
+  │      → POST `/zero-assistant`
+  │      → receive deterministic local time reply_text
+  │      → local Piper playback
+  │
   ├─ classify_request(..., raw_transcript=transcript) == TOOL_NEEDED
   │      → `generate_reply(..., search=True)`
   │      → POST `/zero-assistant`
@@ -102,6 +107,9 @@ text input
       │
       ├─ LOCAL_SKILL
       │      → local skill.run()
+      │
+      ├─ TIME_QUERY
+      │      → deterministic local formatter (no LLM call)
       │
       ├─ TOOL_NEEDED
       │      ├─ try OpenAI Responses + `web_search` tool  (006, ~3–8 s)

@@ -2,6 +2,14 @@
 
 ## Current Focus
 
+- ✅ Exec-plan 021 done — deterministic time queries are now implemented end to
+  end. Added src/api/skills/time_query.py for local parser/formatter logic,
+  added RouteKind.TIME_QUERY in shared classify_request(), wired
+  /zero-assistant to return meta.source="local-skill" + meta.action="time_query",
+  and routed the voice bridge time-query branch via API for deterministic replies.
+  Added tests in tests/test_time_query.py plus policy/API/bridge coverage updates.
+  Validation: pytest tests/ -v passed (91).
+
 - ✅ Exec-plan 018B done — `.github/workflows/hardware-smoke.yml` now adds a
   manual, non-blocking Raspberry Pi hardware smoke workflow on the dedicated
   runner labels `self-hosted`, `linux`, `ARM64`, `voiceassist-pi`. It

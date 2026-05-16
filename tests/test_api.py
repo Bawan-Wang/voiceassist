@@ -97,6 +97,35 @@ class TestGeneralQA:
         assert r.json()["meta"]["source"] == "fallback-openai"
 
 
+class TestTimeQueries:
+    def test_time_query_uses_local_skill_path(self, client):
+        r = client.post("/zero-assistant", json={"text": "日本現在幾點"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["meta"]["source"] == "local-skill"
+        assert data["meta"]["action"] == "time_query"
+        assert data["meta"]["timezone"] == "Asia/Tokyo"
+        assert "日本現在時間是" in data["reply_text"]
+
+    def test_date_query_uses_local_skill_path(self, client):
+        r = client.post("/zero-assistant", json={"text": "今天幾號"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["meta"]["source"] == "local-skill"
+        assert data["meta"]["action"] == "time_query"
+        assert data["meta"]["time_kind"] == "date"
+
+    def test_unknown_place_time_query_asks_for_clarification(self, client):
+        r = client.post("/zero-assistant", json={"text": "巴黎現在幾點"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["meta"]["source"] == "local-skill"
+        assert data["meta"]["action"] == "time_query"
+        assert data["meta"]["time_kind"] == "time"
+        assert data["meta"]["timezone"] is None
+        assert data["reply_text"] == "抱歉，巴黎的時區我還不確定，你可以換個地名說法嗎？"
+
+
 # ---------------------------------------------------------------------------
 # exec-plan 006 — websearch routing
 # ---------------------------------------------------------------------------
