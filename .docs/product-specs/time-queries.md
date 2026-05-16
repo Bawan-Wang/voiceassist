@@ -46,6 +46,8 @@ not cover reminder creation or persistent user memory.
 - `兔兔助理，日本現在幾點？`
 - `幫我看一下東京時間`
 - `現在台灣幾點了`
+- `请问现在几点`
+- `兔助理，请问现在几点`
 
 ---
 
@@ -81,10 +83,10 @@ Suggested starting aliases:
 
 | User phrase | Canonical timezone |
 |-------------|--------------------|
-| `台灣` / `台北` | `Asia/Taipei` |
-| `日本` / `東京` | `Asia/Tokyo` |
-| `紐約` | `America/New_York` |
-| `倫敦` | `Europe/London` |
+| `台灣` / `台湾` / `台北` | `Asia/Taipei` |
+| `日本` / `東京` / `东京` | `Asia/Tokyo` |
+| `紐約` / `纽约` | `America/New_York` |
+| `倫敦` / `伦敦` | `Europe/London` |
 
 ---
 
@@ -131,6 +133,8 @@ Example clarification response:
 
 - The current implementation lives in `src/api/skills/time_query.py`.
 - Routing is shared through `src/api/skills/policy.py` as `RouteKind.TIME_QUERY`.
+- The parser accepts both Traditional and Simplified Chinese time tokens, plus
+  common ASR wake-prefix variants such as `兔助理，请问现在几点`.
 - Unknown place names do not silently fall back to the local timezone; they
   return a clarification prompt on the same local-skill path.
 

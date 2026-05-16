@@ -8,7 +8,11 @@
   /zero-assistant to return meta.source="local-skill" + meta.action="time_query",
   and routed the voice bridge time-query branch via API for deterministic replies.
   Added tests in tests/test_time_query.py plus policy/API/bridge coverage updates.
-  Validation: pytest tests/ -v passed (91).
+  Follow-up fix: simplified-Chinese and ASR-style variants such as
+  `请问现在几点` and `兔助理，请问现在几点` now route to the same
+  deterministic path instead of falling through to chat.
+  Validation: initial 021 suite `pytest tests/ -v` passed (91); current full
+  suite `pytest -q .` passed (95).
 
 - ✅ Exec-plan 018B done — `.github/workflows/hardware-smoke.yml` now adds a
   manual, non-blocking Raspberry Pi hardware smoke workflow on the dedicated
