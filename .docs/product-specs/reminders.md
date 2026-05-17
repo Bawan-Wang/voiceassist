@@ -220,7 +220,7 @@ Examples:
 - Absolute reminders without an explicit timezone use the local runtime
   timezone, which is currently `Asia/Taipei`.
 - `今天`, `明天`, and `後天` are evaluated in the resolved timezone context.
-- Relative minute/hour reminders use local deterministic `timedelta` math from
+- Relative second/minute/hour reminders use local deterministic `timedelta` math from
   the system clock.
 - Pure relative reminders do not need a timezone alias because a duration maps
   to the same absolute instant regardless of display timezone.
@@ -446,7 +446,7 @@ Suggested `reason` values in v1:
 
 ## Acceptance Criteria
 
-- The finalized implementation supports one-time absolute reminders, minute/hour
+- The finalized implementation supports one-time absolute reminders, second/minute/hour
   relative reminders, and timezone-aware clock reminders.
 - Reminder routing precedes time-query/search/chat routing once reminder intent
   is implemented.
