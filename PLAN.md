@@ -41,12 +41,13 @@ tests/                       Pytest harness
 | 19 | Add GitHub-hosted CI + code scanning baseline (exec-plan 018A) | ✅ Done |
 | 20 | Add Raspberry Pi self-hosted hardware smoke workflow (exec-plan 018B) | ✅ Done |
 | 21 | Shared routing policy (exec-plan 020) | ✅ Done |
-| 22 | Plan time queries, reminders, and memory as the next product surface | 📝 Planned |
+| 22 | Plan time queries, reminders, and memory as the next product surface | 🚧 In Progress |
 | 23 | Implement deterministic time queries (exec-plan 021) | ✅ Done |
+| 24 | Implement one-time reminders (exec-plan 022) | 📝 Planned |
 
 ## Active Exec Plans
 
-None.
+- `022` — `.docs/exec-plans/022-implement-reminders.md`
 
 ## Next Product Work
 
@@ -69,17 +70,19 @@ Current planning status:
 
 - `.docs/product-specs/time-queries.md` has been implemented via
   exec-plan 021.
-- `.docs/product-specs/reminders.md` exists as a planned skeleton and still
-  needs to be expanded into a full implementation-ready spec.
+- `.docs/product-specs/reminders.md` is now implementation-ready and is the
+  product source of truth for exec-plan 022.
 - `.docs/product-specs/memory.md` exists as a planned skeleton and still needs
   to be expanded into a full implementation-ready spec.
 
-Do not start implementation from these skeleton specs alone. The expected flow
-for this product area is:
+The expected flow for this product area is now:
 
-1. Complete `reminders.md` with explicit confirmation, persistence, and due-time behavior.
+1. Execute `022-implement-reminders.md` against the finalized `reminders.md` spec.
 2. Complete `memory.md` with a narrow first-phase scope.
-3. After the specs are fully defined, create the corresponding exec-plan(s) and implement in the same order.
+3. After the memory spec is fully defined, create the corresponding memory exec-plan and implement it after reminders are stable.
+
+Phase 22 remains in progress until the memory product boundary is equally well
+defined.
 
 ## Done (archived)
 
