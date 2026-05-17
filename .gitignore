@@ -11,6 +11,8 @@ env/
 
 # Runtime state
 data/demo_state.json
+data/reminders.json
+data/reminder_pending.json
 
 # Downloaded model assets
 models/
