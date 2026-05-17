@@ -54,6 +54,30 @@ def zero_assistant(req: AssistRequest):
             meta={"source": "local-skill", "action": decision.skill.NAME},
         )
 
+    if decision.kind is RouteKind.REMINDER:
+        # Handle reminder path locally
+        from .skills.reminders import parse_reminder, create_reminder_from_result, start_pending_confirmation, accept_pending_confirmation, cancel_pending
+
+        res = parse_reminder(normalized_text)
+        if res is None:
+            return AssistResponse(reply_text="抱歉，我不確定你要建立什麼提醒。", meta={"source": "local-skill", "action": "reminder", "status": "reject"})
+
+        if res.mode == "create":
+            entry = create_reminder_from_result(res)
+            if entry:
+                return AssistResponse(reply_text=f"已為你設定提醒：{res.task}，{res.human_readable_time}", meta={"source": "local-skill", "action": "reminder_create", "id": entry.get("id")})
+            return AssistResponse(reply_text="抱歉，無法建立提醒。", meta={"source": "local-skill", "action": "reminder_create", "status": "error"})
+
+        if res.mode == "need_time_detail":
+            return AssistResponse(reply_text="請問你想什麼時候提醒我？", meta={"source": "local-skill", "action": "reminder_needs_time"})
+
+        if res.mode == "confirm_candidate":
+            # start pending confirmation
+            pending = start_pending_confirmation(res.candidate)
+            return AssistResponse(reply_text=f"你要我在稍後提醒你：{res.candidate.get('task')} 嗎？請回答是或否。", meta={"source": "local-skill", "action": "reminder_confirm", "pending": True})
+
+        return AssistResponse(reply_text="抱歉，我不確定你要建立什麼提醒。", meta={"source": "local-skill", "action": "reminder", "status": "reject"})
+
     if decision.kind is RouteKind.TIME_QUERY and decision.time_query is not None:
         from .skills.time_query import render_time_query_reply
 

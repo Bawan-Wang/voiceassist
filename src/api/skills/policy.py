@@ -11,6 +11,7 @@ from .time_query import TimeQueryIntent, parse_time_query
 
 class RouteKind(str, Enum):
     LOCAL_SKILL = "local_skill"
+    REMINDER = "reminder"
     TIME_QUERY = "time_query"
     TOOL_NEEDED = "tool_needed"
     CHAT = "chat"
@@ -75,6 +76,21 @@ def classify_request(text: str, *, raw_transcript: str | None = None) -> RouteDe
                 skill=raw_skill,
                 used_raw_transcript=True,
             )
+
+    # Reminder route has higher precedence than time query
+    try:
+        from .reminders import parse_reminder
+
+        reminder = parse_reminder(normalized_text)
+        if reminder is not None and getattr(reminder, "mode", None) in ("create", "need_time_detail", "confirm_candidate"):
+            return RouteDecision(
+                kind=RouteKind.REMINDER,
+                routed_text=normalized_text,
+                skill=None,
+                time_query=None,
+            )
+    except Exception:  # pylint: disable=broad-except
+        pass
 
     time_query = parse_time_query(normalized_text)
     if time_query is not None:
