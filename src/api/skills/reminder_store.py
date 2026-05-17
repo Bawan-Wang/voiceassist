@@ -59,3 +59,14 @@ def read_pending() -> dict | None:
 
 def clear_pending() -> None:
     write_pending(None)
+
+
+def mark_delivered(reminder_id: str) -> None:
+    reminders = list_reminders()
+    changed = False
+    for r in reminders:
+        if r.get("id") == reminder_id:
+            r["delivered"] = True
+            changed = True
+    if changed:
+        _atomic_write(REMINDERS_PATH, reminders)

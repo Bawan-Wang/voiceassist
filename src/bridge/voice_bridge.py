@@ -226,6 +226,9 @@ class VoiceBridge:
         self._last_auto_command_ts = 0.0
         self._silero_session: Optional[Any] = None
 
+        # state flags for reminder delivery
+        self._is_speaking = False
+
         silero_model_path = ensure_silero_model(self.cfg.silero_model_path, self.cfg.silero_model_url)
         if silero_model_path is not None and silero_model_path.exists():
             try:
@@ -240,6 +243,16 @@ class VoiceBridge:
                 print(f"[voice_bridge] Using Silero VAD: {silero_model_path}")
             except Exception as exc:  # pylint: disable=broad-except
                 print(f"[voice_bridge] Silero VAD init failed, fallback to WebRTC: {exc}")
+
+        # start reminder poller thread
+        try:
+            from src.api.skills.reminder_store import list_reminders
+
+            self._reminder_thread = threading.Thread(target=self._reminder_poller, daemon=True)
+            self._reminder_thread.start()
+        except Exception:
+            # best-effort; poller not critical for tests
+            self._reminder_thread = None
 
     def _create_stt_provider(self) -> SherpaOnnxSpeechToTextProvider:
         from .providers import SherpaOnnxSpeechToTextProvider
@@ -312,6 +325,69 @@ class VoiceBridge:
                         continue
             print(f"[voice_bridge] Command: {command}")
 
+            # pending follow-up handling (accept/cancel/attach time)
+            try:
+                from src.api.skills.reminders import read_pending, accept_pending_confirmation, cancel_pending, parse_reminder, clear_pending
+            except Exception:
+                read_pending = accept_pending_confirmation = cancel_pending = parse_reminder = clear_pending = None
+
+            handled_pending = False
+            if read_pending is not None:
+                pending = read_pending()
+                if pending:
+                    # check expiry
+                    try:
+                        expires = pending.get('expires_at')
+                        if expires:
+                            exp_dt = datetime.fromisoformat(expires)
+                            if datetime.now().astimezone() > exp_dt:
+                                # expired
+                                clear_pending()
+                                pending = None
+                    except Exception:
+                        pending = None
+                if pending:
+                    cmd_lower = command.strip().lower()
+                    yes_tokens = ('是', '好', '對', '可以', '行', 'ok', 'yes')
+                    no_tokens = ('不', '不要', '不用', '否', '沒', '不行', 'no')
+                    if any(cmd_lower == t or cmd_lower.startswith(t) for t in yes_tokens):
+                        # accept
+                        try:
+                            entry = accept_pending_confirmation()
+                            if entry:
+                                self.speak(f"已為你設定提醒：{entry.get('task')}，{entry.get('due')}。")
+                            else:
+                                self.speak("抱歉，無法建立提醒。")
+                        except Exception:
+                            self.speak("抱歉，建立提醒時發生錯誤。")
+                        handled_pending = True
+                    elif any(cmd_lower == t or cmd_lower.startswith(t) for t in no_tokens):
+                        try:
+                            cancel_pending()
+                            self.speak("好的，已取消提醒。")
+                        except Exception:
+                            self.speak("抱歉，取消提醒時發生錯誤。")
+                        handled_pending = True
+                    else:
+                        # user may say a time; try parse
+                        try:
+                            res = parse_reminder(command)
+                            if res and res.mode == 'create' and res.when_iso:
+                                # attach to candidate
+                                candidate = pending.get('candidate', {})
+                                task = candidate.get('task') or '提醒事項'
+                                from src.api.skills.reminder_store import add_reminder as _add
+                                entry = _add(task, res.when_iso)
+                                clear_pending()
+                                self.speak(f"已為你設定提醒：{task}，{res.human_readable_time}")
+                                handled_pending = True
+                        except Exception:
+                            pass
+
+            if handled_pending:
+                # skip normal routing
+                continue
+
             decision = classify_request(command, raw_transcript=transcript)
 
             if decision.kind is RouteKind.LOCAL_SKILL:
@@ -365,6 +441,45 @@ class VoiceBridge:
 
     def _handle_stop(self, *_: object) -> None:
         self._running = False
+
+    def _reminder_poller(self) -> None:
+        """Background poller that delivers due reminders when bridge is idle."""
+        try:
+            from src.api.skills.reminder_store import list_reminders, mark_delivered
+        except Exception:
+            return
+
+        SLEEP_SEC = 5
+        while self._running:
+            try:
+                now = datetime.now().astimezone()
+                reminders = list_reminders()
+                # find due and not delivered
+                due = [r for r in reminders if not r.get('delivered') and r.get('due')]
+                # sort by due
+                due_sorted = sorted(due, key=lambda r: r.get('due'))
+                for r in due_sorted:
+                    try:
+                        due_dt = datetime.fromisoformat(r.get('due'))
+                    except Exception:
+                        continue
+                    if due_dt <= now:
+                        # deliver only when not speaking
+                        if not getattr(self, '_is_speaking', False):
+                            task = r.get('task') or '提醒事項'
+                            # speak and mark delivered
+                            try:
+                                self.speak(f"提醒：{task}")
+                                mark_delivered(r.get('id'))
+                            except Exception:
+                                # on error, skip and try later
+                                pass
+                        else:
+                            # skip delivery until next poll
+                            pass
+                time.sleep(SLEEP_SEC)
+            except Exception:
+                time.sleep(SLEEP_SEC)
 
     def _match_wake_phrase(self, transcript: str) -> Optional[str]:
         lower = transcript.lower()
@@ -657,11 +772,14 @@ class VoiceBridge:
         text = self._prepare_reply_for_speech(text, search=False)
         print(f"[voice_bridge] Speaking: {text[:60]}{'...' if len(text)>60 else ''}")
         try:
+            self._is_speaking = True
             audio_path = self.tts_provider.synthesize_to_file(text)
             self._play_audio_file(str(audio_path))
             Path(audio_path).unlink(missing_ok=True)
         except Exception as exc:  # pylint: disable=broad-except
             print(f"[voice_bridge] TTS error: {exc}")
+        finally:
+            self._is_speaking = False
 
     def _prepare_reply_for_speech(self, text: str, search: bool) -> str:
         cleaned = self._normalize_tts_text(text)
