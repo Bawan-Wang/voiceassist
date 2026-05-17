@@ -58,7 +58,7 @@ def zero_assistant(req: AssistRequest):
         # Handle reminder path locally
         from .skills.reminders import parse_reminder, create_reminder_from_result, start_pending_confirmation, accept_pending_confirmation, cancel_pending
 
-        res = parse_reminder(normalized_text)
+        res = parse_reminder(text)
         if res is None:
             return AssistResponse(reply_text="抱歉，我不確定你要建立什麼提醒。", meta={"source": "local-skill", "action": "reminder", "status": "reject"})
 
