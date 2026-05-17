@@ -9,6 +9,7 @@ from datetime import datetime
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
+from zoneinfo import ZoneInfo
 
 
 FIXTURES = json.loads(
@@ -22,6 +23,20 @@ FIXTURES = json.loads(
 
 def _case(case_id: str) -> dict:
     return next(c for c in FIXTURES if c["id"] == case_id)
+
+
+def _spoken_hour_phrase(dt: datetime) -> str:
+    if dt.hour == 0:
+        return "凌晨12點"
+    if 1 <= dt.hour <= 5:
+        return f"凌晨{dt.hour}點"
+    if 6 <= dt.hour <= 11:
+        return f"上午{dt.hour}點"
+    if dt.hour == 12:
+        return "中午12點"
+    if 13 <= dt.hour <= 17:
+        return f"下午{dt.hour - 12}點"
+    return f"晚上{dt.hour - 12}點"
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +177,15 @@ class TestReminders:
         assert data["meta"]["action"] == "create_reminder"
         assert data["meta"]["reminder_id"]
 
+    def test_second_based_reminder_creates_local_skill_response(self, client):
+        r = client.post("/zero-assistant", json={"text": "5秒鐘後提醒我吃藥"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["meta"]["source"] == "local-skill"
+        assert data["meta"]["action"] == "create_reminder"
+        assert data["meta"]["reminder_id"]
+        assert "5秒後" in data["reply_text"]
+
     def test_need_time_detail_starts_pending_confirmation(self, client):
         r = client.post("/zero-assistant", json={"text": "明天下午提醒我開會"})
         assert r.status_code == 200
@@ -182,9 +206,13 @@ class TestReminders:
         assert data["meta"]["source"] == "local-skill"
 
     def test_confirm_candidate_decline_cancels_pending(self, client):
-        late_now = datetime.fromisoformat("2026-05-17T22:00:00+08:00")
+        late_now = datetime.now(ZoneInfo("Asia/Taipei")).replace(second=0, microsecond=0)
+        if late_now.hour == 0:
+            late_now = late_now.replace(hour=1, minute=0)
+        past_candidate = late_now.replace(hour=late_now.hour - 1, minute=0)
+        reminder_text = f"{_spoken_hour_phrase(past_candidate)}提醒我收衣服"
         with patch("src.api.skills.reminders._now_in_timezone", return_value=late_now):
-            first = client.post("/zero-assistant", json={"text": "晚上九點提醒我收衣服"})
+            first = client.post("/zero-assistant", json={"text": reminder_text})
         assert first.status_code == 200
         assert first.json()["meta"]["confirmation_mode"] == "confirm_candidate"
 

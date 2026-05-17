@@ -16,6 +16,7 @@ YES_TOKENS = ("好", "是", "對", "对", "可以", "行", "ok", "yes")
 NO_TOKENS = ("不是", "不對", "不对", "不用了", "取消", "算了", "不要", "不用", "no")
 
 _REMINDER_INTENT_RE = re.compile(r"提醒(?:我|一下)?|叫我")
+_RELATIVE_SEC_RE = re.compile(r"(\d+)\s*(?:秒鐘後|秒钟后|秒後|秒后)")
 _RELATIVE_MIN_RE = re.compile(r"(\d+)\s*(?:分鐘後|分钟后|分後|分后)")
 _RELATIVE_HOUR_RE = re.compile(r"(\d+)\s*(?:小時後|小时后|時後|时后)")
 _CLOCK_RE = re.compile(
@@ -23,7 +24,7 @@ _CLOCK_RE = re.compile(
     re.IGNORECASE,
 )
 _UNKNOWN_TIMEZONE_RE = re.compile(r"(?P<place>[\u4e00-\u9fffA-Za-z ]{1,24})\s*(?:時間|时间|time)", re.IGNORECASE)
-_TIME_NUMBER_RE = re.compile(r"([零一二三四五六七八九十兩两〇]+)(?=\s*(?:點|点|時|时|分鐘|分钟|分|小時|小时))")
+_TIME_NUMBER_RE = re.compile(r"([零一二三四五六七八九十兩两〇]+)(?=\s*(?:點|点|時|时|秒鐘|秒钟|秒|分鐘|分钟|分|小時|小时))")
 _TIME_STRIP_RE = re.compile(r"^(?:改成|改到|改為|那改成|改一下|改一下成|改一下到)")
 
 _DAY_TOKENS = (
@@ -162,6 +163,11 @@ def _extract_unknown_timezone(text: str) -> str | None:
 
 def _parse_relative(text: str, *, now: datetime | None = None) -> tuple[datetime, str, str] | None:
     now_local = _now_in_timezone(LOCAL_TIMEZONE, now)
+    second_match = _RELATIVE_SEC_RE.search(text)
+    if second_match:
+        seconds = int(second_match.group(1))
+        return now_local + timedelta(seconds=seconds), f"{seconds}秒後", second_match.group(0)
+
     minute_match = _RELATIVE_MIN_RE.search(text)
     if minute_match:
         minutes = int(minute_match.group(1))

@@ -9,6 +9,7 @@ All notable changes to this project are documented here.
 - 022: Implement one-time reminders — deterministic parser/normalizer, durable JSON storage, pending clarification flow, and idle-only voice delivery.
 
 ### Fixed
+- Reminder parsing now accepts second-based relative reminders such as `5秒鐘後提醒我吃藥`, and the API reminder confirmation test no longer depends on a hard-coded late-night clock.
 - 023: Fix routing false positives — tighten LOCAL_SKILL and TIME_QUERY matchers; add regression tests and docs. (Commit a7e741e)
   - Bare noun mentions like "兔兔" and "相框" no longer trigger local-skill routes by themselves.
   - Conversational "我有時間嗎" / "你有時間嗎" are no longer treated as time queries.

@@ -62,14 +62,16 @@ Rules:
 
 ### Relative Reminders
 
+- `5 秒鐘後提醒我吃藥`
 - `10 分鐘後提醒我開會`
 - `半小時後提醒我喝水`
 - `兩小時後提醒我倒垃圾`
 
 Rules:
 
-- v1 relative reminders support minute/hour duration math only.
+- v1 relative reminders support second/minute/hour duration math.
 - Supported relative forms are:
+  - `N 秒鐘後`
   - `N 分鐘後`
   - `半小時後`
   - `N 小時後`
@@ -151,6 +153,7 @@ Create the reminder immediately when the first utterance already contains:
 
 Examples:
 
+- `5 秒鐘後提醒我吃藥`
 - `明天早上八點提醒我買咖啡`
 - `10 分鐘後提醒我開會`
 

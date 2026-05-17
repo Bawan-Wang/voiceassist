@@ -15,6 +15,15 @@ def test_parse_relative_minute():
     assert res.timezone == "Asia/Taipei"
 
 
+def test_parse_relative_second():
+    res = parse_reminder("提醒我5秒鐘後吃藥", now=FIXED_NOW)
+    assert res is not None
+    assert res.mode == "create"
+    assert res.task_text == "吃藥"
+    assert res.due_at is not None
+    assert res.spoken_label == "5秒後"
+
+
 def test_parse_absolute_time():
     res = parse_reminder("提醒我今天18點吃藥", now=FIXED_NOW)
     assert res is not None
