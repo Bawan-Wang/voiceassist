@@ -7,6 +7,10 @@
 
 ## Summary
 
+> Note (023): On 2026-05-17 exec-plan 023 added a defensive rule to `time_query` classification: conversational phrasing such as "我有時間嗎" / "你有時間嗎" (meaning "do I/we have free time") is no longer treated as a clock/timezone query. Such ambiguous utterances should remain in CHAT or trigger a clarification flow rather than a deterministic time response. See `.docs/exec-plans/023-fix-routing-false-positives.md` and `.docs/product-specs/smoke-tests.md` for negative test cases.
+
+
+
 The assistant answers current time, date, weekday, and selected timezone-aware
 time questions such as `現在幾點` and `日本現在幾點`.
 

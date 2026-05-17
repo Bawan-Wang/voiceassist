@@ -7,6 +7,10 @@
 
 ## Summary
 
+> Note (023): On 2026-05-17 exec-plan 023 tightened the LOCAL_SKILL and TIME_QUERY token matchers to reduce false positives. Bare noun mentions (e.g. "兔兔", "相框") no longer by themselves trigger a local-skill route — command-style phrasing is required. See `.docs/exec-plans/023-fix-routing-false-positives.md` and `.docs/product-specs/smoke-tests.md` for examples and regression cases.
+
+
+
 Once text is available, the system classifies it into route categories and sends
 the request to the matching handler: deterministic local execution
 (including time queries), OpenAI websearch (with plain OpenAI fallback), or plain

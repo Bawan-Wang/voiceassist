@@ -42,8 +42,9 @@ tests/                       Pytest harness
 | 20 | Add Raspberry Pi self-hosted hardware smoke workflow (exec-plan 018B) | ✅ Done |
 | 21 | Shared routing policy (exec-plan 020) | ✅ Done |
 | 22 | Plan time queries, reminders, and memory as the next product surface | 🚧 In Progress |
-| 23 | Implement deterministic time queries (exec-plan 021) | ✅ Done |
-| 24 | Implement one-time reminders (exec-plan 022) | 📝 Planned |
+| 23 | Fix routing false positives (exec-plan 023) | ✅ Done |
+| 24 | Implement deterministic time queries (exec-plan 021) | ✅ Done |
+| 25 | Implement one-time reminders (exec-plan 022) | 📝 Planned |
 
 ## Active Exec Plans
 
@@ -97,5 +98,4 @@ See `.docs/exec-plans/done/` — includes 001 (env), 002 (vlm-bridge), 003
 018A (github-hosted-ci-and-code-scanning-baseline),
 018B (raspberry-pi-self-hosted-hardware-smoke),
 019 (document-voice-vs-http-entrypoints),
-020 (shared-routing-policy),
-021 (implement-time-queries).
+020 (shared-routing-policy), 021 (implement-time-queries), 023 (fix-routing-false-positives).
