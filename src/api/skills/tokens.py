@@ -9,12 +9,13 @@ from __future__ import annotations
 import re
 
 PHOTOFRAME_TOKENS = {
-    "相框", "相簿", "照片",
+    "相框", "相簿", "相冊", "相册", "照片", "相布", "相步",
     "photoframe", "album", "photos", "photo frame",
 }
 BUNNY_TOKENS = {"兔兔", "bunny"}
 VERB_TOKENS = {
-    "打開", "開啟", "切到", "切去", "切回", "回到", "顯示", "看",
+    "打開", "打开", "開啟", "开启", "切換", "切换", "切換到", "切换到",
+    "切到", "切去", "切回", "回到", "顯示", "显示", "看",
     "open", "show", "switch",
 }
 
@@ -29,9 +30,11 @@ _LEADING_FILLERS = (
     "兔兔助理",
     "兔助理",
     "幫我",
+    "帮我",
     "请帮我",
     "請幫我",
     "幫我把",
+    "帮我把",
     "請",
     "请",
     "麻煩",

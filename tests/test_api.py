@@ -44,6 +44,24 @@ class TestLocalCommands:
         assert r.status_code == 200
         assert r.json()["meta"]["action"] == "open_photoframe"
 
+    def test_switch_album_phrase_routes_to_photoframe(self, client):
+        with patch("src.api.skills.open_photoframe.run", return_value="好的，已幫你打開相框。"):
+            r = client.post("/zero-assistant", json={"text": "切換相簿"})
+        assert r.status_code == 200
+        assert r.json()["meta"]["action"] == "open_photoframe"
+
+    def test_simplified_open_photoframe_routes_local(self, client):
+        with patch("src.api.skills.open_photoframe.run", return_value="好的，已幫你打開相框。"):
+            r = client.post("/zero-assistant", json={"text": "帮我打开相框"})
+        assert r.status_code == 200
+        assert r.json()["meta"]["action"] == "open_photoframe"
+
+    def test_asr_album_typo_routes_local(self, client):
+        with patch("src.api.skills.open_photoframe.run", return_value="好的，已幫你打開相框。"):
+            r = client.post("/zero-assistant", json={"text": "請切換相布"})
+        assert r.status_code == 200
+        assert r.json()["meta"]["action"] == "open_photoframe"
+
     def test_open_photos_alias(self, client):
         with patch("src.api.skills.open_photoframe.run", return_value="好的，已幫你打開相框。"):
             r = client.post("/zero-assistant", json={"text": "打開照片"})

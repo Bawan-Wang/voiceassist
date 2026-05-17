@@ -26,6 +26,12 @@ class TestTokens:
     @pytest.mark.parametrize("text,expected", [
         ("打開相框", True),
         ("幫我打開相簿", True),
+        ("切換相簿", True),
+        ("切换相簿", True),
+        ("帮我打开相框", True),
+        ("请开启相框", True),
+        ("請切換相布", True),
+        ("开启相步", True),
         ("切到照片", True),
         ("open photoframe", True),
         ("show me the album", True),
