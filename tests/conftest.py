@@ -29,6 +29,16 @@ def _make_openai_response(text: str) -> MagicMock:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def isolated_reminder_storage(tmp_path, monkeypatch):
+    from src.api.skills import reminder_store
+
+    monkeypatch.setattr(reminder_store, "REMINDERS_PATH", tmp_path / "reminders.json")
+    monkeypatch.setattr(reminder_store, "PENDING_PATH", tmp_path / "reminder_pending.json")
+    monkeypatch.setattr(reminder_store, "LEGACY_REMINDERS_PATH", tmp_path / "legacy-reminders.json")
+    monkeypatch.setattr(reminder_store, "LEGACY_PENDING_PATH", tmp_path / "legacy-reminder-pending.json")
+    yield
+
 @pytest.fixture
 def mock_openai():
     """Patch OpenAI client so no real API calls are made.

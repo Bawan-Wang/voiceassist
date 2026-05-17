@@ -228,6 +228,7 @@ class VoiceBridge:
 
         # state flags for reminder delivery
         self._is_speaking = False
+        self._bridge_phase = "idle"
 
         silero_model_path = ensure_silero_model(self.cfg.silero_model_path, self.cfg.silero_model_url)
         if silero_model_path is not None and silero_model_path.exists():
@@ -253,6 +254,76 @@ class VoiceBridge:
         except Exception:
             # best-effort; poller not critical for tests
             self._reminder_thread = None
+
+    def _update_ui_state(
+        self,
+        phase: str,
+        *,
+        user_text: Optional[str] = None,
+        assistant_text: Optional[str] = None,
+    ) -> None:
+        self._bridge_phase = phase
+        update_state(self.cfg.state_path, phase, user_text=user_text, assistant_text=assistant_text)
+
+    def _route_reply_via_api(self, prompt: str) -> bool:
+        self._update_ui_state("thinking", user_text=prompt, assistant_text="")
+        reply = self._reply_via_api(prompt)
+        if not reply:
+            self._update_ui_state("idle", assistant_text="抱歉，沒有聽清楚。")
+            return True
+        self._update_ui_state("speaking", assistant_text=reply)
+        self.speak(reply)
+        self._update_ui_state("idle", assistant_text=reply)
+        return True
+
+    def _process_pending_follow_up(self, command: str) -> bool:
+        try:
+            from src.api.skills.reminders import has_pending_confirmation
+        except Exception:
+            return False
+
+        if not has_pending_confirmation():
+            return False
+
+        print("[voice_bridge] Pending reminder follow-up detected, routing to API first")
+        return self._route_reply_via_api(command)
+
+    def _deliver_due_reminders_once(self) -> None:
+        try:
+            from src.api.skills.reminder_store import list_reminders, mark_delivered
+        except Exception:
+            return
+
+        if self._bridge_phase != "idle" or getattr(self, "_is_speaking", False):
+            return
+
+        now = datetime.now(timezone.utc)
+        reminders = list_reminders()
+        due = [
+            reminder
+            for reminder in reminders
+            if reminder.get("status") == "pending" and reminder.get("due_at")
+        ]
+        due_sorted = sorted(due, key=lambda reminder: reminder.get("due_at", ""))
+        for reminder in due_sorted:
+            try:
+                due_dt = datetime.fromisoformat(str(reminder.get("due_at")))
+            except (TypeError, ValueError):
+                continue
+            if due_dt > now:
+                continue
+            if self._bridge_phase != "idle" or getattr(self, "_is_speaking", False):
+                break
+
+            delivery_text = f"提醒你，{reminder.get('task_text') or '提醒事項'}。"
+            self._update_ui_state("speaking", user_text="", assistant_text=delivery_text)
+            try:
+                self.speak(delivery_text)
+                mark_delivered(str(reminder.get("id")))
+                self._update_ui_state("idle", assistant_text=delivery_text)
+            except Exception:
+                self._update_ui_state("idle")
+                break
 
     def _create_stt_provider(self) -> SherpaOnnxSpeechToTextProvider:
         from .providers import SherpaOnnxSpeechToTextProvider
@@ -289,10 +360,10 @@ class VoiceBridge:
             if not audio:
                 continue
 
-            update_state(self.cfg.state_path, "listening", user_text="……", assistant_text="Zero 正在傾聽中…")
+            self._update_ui_state("listening", user_text="……", assistant_text="Zero 正在傾聽中…")
             transcript = self.transcribe(audio)
             if not transcript:
-                update_state(self.cfg.state_path, "idle")
+                self._update_ui_state("idle")
                 continue
 
             matched = self._match_wake_phrase(transcript)
@@ -307,7 +378,7 @@ class VoiceBridge:
                 if not command:
                     self._pending_wake_until = now + timedelta(seconds=self.cfg.pending_wake_timeout_sec)
                     print("[voice_bridge] Wake word heard; waiting for next sentence as command")
-                    update_state(self.cfg.state_path, "listening", user_text="請說指令", assistant_text="")
+                    self._update_ui_state("listening", user_text="請說指令", assistant_text="")
                     continue
             else:
                 if self._pending_wake_until and now <= self._pending_wake_until:
@@ -321,71 +392,11 @@ class VoiceBridge:
                         print("[voice_bridge] Auto-route (no explicit wake word)")
                     else:
                         print(f"[voice_bridge] Ignored (no wake word): {transcript}")
-                        update_state(self.cfg.state_path, "idle")
+                        self._update_ui_state("idle")
                         continue
             print(f"[voice_bridge] Command: {command}")
 
-            # pending follow-up handling (accept/cancel/attach time)
-            try:
-                from src.api.skills.reminders import read_pending, accept_pending_confirmation, cancel_pending, parse_reminder, clear_pending
-            except Exception:
-                read_pending = accept_pending_confirmation = cancel_pending = parse_reminder = clear_pending = None
-
-            handled_pending = False
-            if read_pending is not None:
-                pending = read_pending()
-                if pending:
-                    # check expiry
-                    try:
-                        expires = pending.get('expires_at')
-                        if expires:
-                            exp_dt = datetime.fromisoformat(expires)
-                            if datetime.now().astimezone() > exp_dt:
-                                # expired
-                                clear_pending()
-                                pending = None
-                    except Exception:
-                        pending = None
-                if pending:
-                    cmd_lower = command.strip().lower()
-                    yes_tokens = ('是', '好', '對', '可以', '行', 'ok', 'yes')
-                    no_tokens = ('不', '不要', '不用', '否', '沒', '不行', 'no')
-                    if any(cmd_lower == t or cmd_lower.startswith(t) for t in yes_tokens):
-                        # accept
-                        try:
-                            entry = accept_pending_confirmation()
-                            if entry:
-                                self.speak(f"已為你設定提醒：{entry.get('task')}，{entry.get('due')}。")
-                            else:
-                                self.speak("抱歉，無法建立提醒。")
-                        except Exception:
-                            self.speak("抱歉，建立提醒時發生錯誤。")
-                        handled_pending = True
-                    elif any(cmd_lower == t or cmd_lower.startswith(t) for t in no_tokens):
-                        try:
-                            cancel_pending()
-                            self.speak("好的，已取消提醒。")
-                        except Exception:
-                            self.speak("抱歉，取消提醒時發生錯誤。")
-                        handled_pending = True
-                    else:
-                        # user may say a time; try parse
-                        try:
-                            res = parse_reminder(command)
-                            if res and res.mode == 'create' and res.when_iso:
-                                # attach to candidate
-                                candidate = pending.get('candidate', {})
-                                task = candidate.get('task') or '提醒事項'
-                                from src.api.skills.reminder_store import add_reminder as _add
-                                entry = _add(task, res.when_iso)
-                                clear_pending()
-                                self.speak(f"已為你設定提醒：{task}，{res.human_readable_time}")
-                                handled_pending = True
-                        except Exception:
-                            pass
-
-            if handled_pending:
-                # skip normal routing
+            if self._process_pending_follow_up(command):
                 continue
 
             decision = classify_request(command, raw_transcript=transcript)
@@ -394,89 +405,51 @@ class VoiceBridge:
                 if decision.used_raw_transcript:
                     print("[voice_bridge] Local skill found in raw transcript (wake-word stripper ate it)")
                 print(f"[voice_bridge] Local skill detected, routing to API: {decision.routed_text}")
-                update_state(self.cfg.state_path, "thinking", user_text=decision.routed_text, assistant_text="")
-                reply = self._reply_via_api(decision.routed_text)
-                if not reply:
-                    update_state(self.cfg.state_path, "idle", assistant_text="抱歉，沒有聽清楚。")
-                    continue
-                update_state(self.cfg.state_path, "speaking", assistant_text=reply)
-                self.speak(reply)
-                update_state(self.cfg.state_path, "idle", assistant_text=reply)
+                self._route_reply_via_api(decision.routed_text)
+                continue
+
+            if decision.kind is RouteKind.REMINDER:
+                print(f"[voice_bridge] Reminder detected, routing to API: {decision.routed_text}")
+                self._route_reply_via_api(decision.routed_text)
                 continue
 
             if decision.kind is RouteKind.TIME_QUERY:
                 print(f"[voice_bridge] Time query detected, routing to API: {decision.routed_text}")
-                update_state(self.cfg.state_path, "thinking", user_text=decision.routed_text, assistant_text="")
-                reply = self._reply_via_api(decision.routed_text)
-                if not reply:
-                    update_state(self.cfg.state_path, "idle", assistant_text="抱歉，沒有聽清楚。")
-                    continue
-                update_state(self.cfg.state_path, "speaking", assistant_text=reply)
-                self.speak(reply)
-                update_state(self.cfg.state_path, "idle", assistant_text=reply)
+                self._route_reply_via_api(decision.routed_text)
                 continue
 
             if decision.kind is RouteKind.TOOL_NEEDED:
                 hint = self.cfg.search_hint
                 print(f"[voice_bridge] Search intent detected, speaking hint first")
-                update_state(self.cfg.state_path, "thinking", user_text=decision.routed_text, assistant_text=hint)
+                self._update_ui_state("thinking", user_text=decision.routed_text, assistant_text=hint)
                 self.speak(hint)
                 reply = self.generate_reply(decision.routed_text, search=True)
                 if not reply:
-                    update_state(self.cfg.state_path, "idle", assistant_text="抱歉，沒有聽清楚。")
+                    self._update_ui_state("idle", assistant_text="抱歉，沒有聽清楚。")
                     continue
 
                 spoken_reply = self._prepare_reply_for_speech(reply, search=True)
-                update_state(self.cfg.state_path, "speaking", assistant_text=reply)
+                self._update_ui_state("speaking", assistant_text=reply)
                 self.speak(spoken_reply)
             else:
-                update_state(self.cfg.state_path, "thinking", user_text=decision.routed_text, assistant_text="正在思考回覆…")
+                self._update_ui_state("thinking", user_text=decision.routed_text, assistant_text="正在思考回覆…")
 
                 reply = self.stream_reply_and_speak(decision.routed_text)
                 if not reply:
-                    update_state(self.cfg.state_path, "idle", assistant_text="抱歉，沒有聽清楚。")
+                    self._update_ui_state("idle", assistant_text="抱歉，沒有聽清楚。")
                     continue
 
-            update_state(self.cfg.state_path, "idle", assistant_text=reply)
+            self._update_ui_state("idle", assistant_text=reply)
 
     def _handle_stop(self, *_: object) -> None:
         self._running = False
 
     def _reminder_poller(self) -> None:
         """Background poller that delivers due reminders when bridge is idle."""
-        try:
-            from src.api.skills.reminder_store import list_reminders, mark_delivered
-        except Exception:
-            return
-
         SLEEP_SEC = 5
         while self._running:
             try:
-                now = datetime.now().astimezone()
-                reminders = list_reminders()
-                # find due and not delivered
-                due = [r for r in reminders if not r.get('delivered') and r.get('due')]
-                # sort by due
-                due_sorted = sorted(due, key=lambda r: r.get('due'))
-                for r in due_sorted:
-                    try:
-                        due_dt = datetime.fromisoformat(r.get('due'))
-                    except Exception:
-                        continue
-                    if due_dt <= now:
-                        # deliver only when not speaking
-                        if not getattr(self, '_is_speaking', False):
-                            task = r.get('task') or '提醒事項'
-                            # speak and mark delivered
-                            try:
-                                self.speak(f"提醒：{task}")
-                                mark_delivered(r.get('id'))
-                            except Exception:
-                                # on error, skip and try later
-                                pass
-                        else:
-                            # skip delivery until next poll
-                            pass
+                self._deliver_due_reminders_once()
                 time.sleep(SLEEP_SEC)
             except Exception:
                 time.sleep(SLEEP_SEC)
@@ -733,7 +706,7 @@ class VoiceBridge:
                 break
             sentence, audio_path = item
             spoken_text = f"{spoken_text}{sentence}".strip()
-            update_state(self.cfg.state_path, "speaking", assistant_text=spoken_text)
+            self._update_ui_state("speaking", assistant_text=spoken_text)
             self._play_audio_file(audio_path)
             Path(audio_path).unlink(missing_ok=True)
 
@@ -772,14 +745,11 @@ class VoiceBridge:
         text = self._prepare_reply_for_speech(text, search=False)
         print(f"[voice_bridge] Speaking: {text[:60]}{'...' if len(text)>60 else ''}")
         try:
-            self._is_speaking = True
             audio_path = self.tts_provider.synthesize_to_file(text)
             self._play_audio_file(str(audio_path))
             Path(audio_path).unlink(missing_ok=True)
         except Exception as exc:  # pylint: disable=broad-except
             print(f"[voice_bridge] TTS error: {exc}")
-        finally:
-            self._is_speaking = False
 
     def _prepare_reply_for_speech(self, text: str, search: bool) -> str:
         cleaned = self._normalize_tts_text(text)
@@ -843,12 +813,16 @@ class VoiceBridge:
         return text
 
     def _play_audio_file(self, file_path: str) -> None:
-        subprocess.run(
-            ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", file_path],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        self._is_speaking = True
+        try:
+            subprocess.run(
+                ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", file_path],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        finally:
+            self._is_speaking = False
 
 
 def update_state(state_path: Path, phase: str, *, user_text: Optional[str] = None, assistant_text: Optional[str] = None) -> None:

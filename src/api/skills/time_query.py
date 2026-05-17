@@ -69,6 +69,13 @@ def _resolve_timezone_label(text: str) -> tuple[str, str]:
     return "", ""
 
 
+def resolve_timezone_alias(text: str) -> tuple[str | None, str | None]:
+    timezone_name, label = _resolve_timezone_label(text)
+    if not timezone_name:
+        return None, None
+    return timezone_name, label
+
+
 def _trim_candidate(text: str) -> str:
     candidate = text.strip(_TRAILING_FILLERS)
     candidate = re.sub(r"^[^，,。.!！？?\s]{1,8}助理[，,、。.!！？?\s]*", "", candidate)

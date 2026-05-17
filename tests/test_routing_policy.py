@@ -72,3 +72,20 @@ class TestRoutingPolicy:
 
         assert decision.kind == RouteKind.CHAT
         assert decision.skill is None
+
+    def test_reminder_with_timezone_routes_before_time_query(self):
+        decision = classify_request("日本時間下午三點提醒我開會")
+
+        assert decision.kind == RouteKind.REMINDER
+        assert decision.time_query is None
+
+    def test_reminder_with_search_word_stays_reminder(self):
+        decision = classify_request("明天早上八點提醒我查資料")
+
+        assert decision.kind == RouteKind.REMINDER
+        assert decision.is_search is False
+
+    def test_invalid_reminder_still_routes_to_reminder_path(self):
+        decision = classify_request("提醒我買牛奶")
+
+        assert decision.kind == RouteKind.REMINDER

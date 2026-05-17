@@ -2,6 +2,21 @@
 
 ## Current Focus
 
+- ✅ Exec-plan 022 done — one-time reminders are now implemented end to end.
+  Added deterministic reminder parsing and normalization in
+  `src/api/skills/reminders.py`, durable reminder/pending JSON storage in
+  `src/api/skills/reminder_store.py`, `RouteKind.REMINDER` handling in the
+  shared classifier and API path, and voice-bridge pending-follow-up bypass plus
+  idle-only due-reminder delivery in `src/bridge/voice_bridge.py`. Reminder
+  records now live under repo-root `data/`, use timezone-aware ISO timestamps,
+  and preserve `pending` vs `delivered` state explicitly. Added reminder parser,
+  store, routing-policy, API, and voice-bridge tests including confirmation
+  modes, precedence over time/search, pending bypass, and oldest-first overdue
+  drain behavior. Validation: focused 022 slice
+  `pytest -q tests/test_reminders.py tests/test_reminder_store_and_pending.py tests/test_reminder_delivery_simulation.py tests/test_routing_policy.py tests/test_api.py tests/test_voice_bridge_local_routing.py tests/test_voice_bridge_reminders.py`
+  passed (58), repository suite `pytest tests/ -v` passed (126), and full suite
+  `pytest -q` passed (126).
+
 - ✅ Exec-plan 023 done — routing false positives are now tightened in the
   shared classifier boundary. `src/api/skills/tokens.py` no longer treats bare
   noun mention (`兔兔`, `相框`, `照片`) as a device-action command; local skills

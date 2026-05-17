@@ -44,11 +44,11 @@ tests/                       Pytest harness
 | 22 | Plan time queries, reminders, and memory as the next product surface | 🚧 In Progress |
 | 23 | Fix routing false positives (exec-plan 023) | ✅ Done |
 | 24 | Implement deterministic time queries (exec-plan 021) | ✅ Done |
-| 25 | Implement one-time reminders (exec-plan 022) | 📝 Planned |
+| 25 | Implement one-time reminders (exec-plan 022) | ✅ Done |
 
 ## Active Exec Plans
 
-- `022` — `.docs/exec-plans/022-implement-reminders.md`
+- None.
 
 ## Next Product Work
 
@@ -71,16 +71,16 @@ Current planning status:
 
 - `.docs/product-specs/time-queries.md` has been implemented via
   exec-plan 021.
-- `.docs/product-specs/reminders.md` is now implementation-ready and is the
-  product source of truth for exec-plan 022.
+- `.docs/product-specs/reminders.md` has now been implemented via
+  exec-plan 022.
 - `.docs/product-specs/memory.md` exists as a planned skeleton and still needs
   to be expanded into a full implementation-ready spec.
 
 The expected flow for this product area is now:
 
-1. Execute `022-implement-reminders.md` against the finalized `reminders.md` spec.
-2. Complete `memory.md` with a narrow first-phase scope.
-3. After the memory spec is fully defined, create the corresponding memory exec-plan and implement it after reminders are stable.
+1. Complete `memory.md` with a narrow first-phase scope.
+2. Create the corresponding memory exec-plan once the product boundary is stable.
+3. Implement memory after reminder behavior has stabilized in normal use.
 
 Phase 22 remains in progress until the memory product boundary is equally well
 defined.

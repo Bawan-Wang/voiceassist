@@ -13,8 +13,8 @@
 
 Once text is available, the system classifies it into route categories and sends
 the request to the matching handler: deterministic local execution
-(including time queries), OpenAI websearch (with plain OpenAI fallback), or plain
-OpenAI GPT-4o-mini.
+(including reminders and time queries), OpenAI websearch (with plain OpenAI
+fallback), or plain OpenAI GPT-4o-mini.
 
 This document starts at the text-routing stage. The voice runtime and the HTTP
 endpoint still do not enter the system at the same stage, but after 020 they do
@@ -36,18 +36,25 @@ shared `classify_request(text, raw_transcript=None)`
   │           meta.source = "local-skill", meta.action = NAME
   │           (voice bridge may use `raw_transcript` fallback for this branch)
   │
-  ├─ 2. Time query? (`現在幾點` / `今天幾號` / `今天星期幾` / named timezone)
+  ├─ 2. Reminder? (one-time reminder intent, pending reminder follow-ups)
+  │  └─ YES → deterministic parser/store in `src/api/skills/reminders.py`
+  │           meta.source = "local-skill"
+  │           meta.action = "create_reminder" / "confirm_reminder" / `cancel_reminder`
+  │           (voice bridge checks pending reminder state before normal classification,
+  │            and delivers due reminders only when idle)
+  │
+  ├─ 3. Time query? (`現在幾點` / `今天幾號` / `今天星期幾` / named timezone)
   │  └─ YES → deterministic formatter in `src/api/skills/time_query.py`
   │           meta.source = "local-skill", meta.action = "time_query"
   │
-  ├─ 3. Search intent? (see token list below)
+  ├─ 4. Search intent? (see token list below)
   │  └─ YES → POST /zero-assistant
   │           ├─ try OpenAI Responses + `web_search` tool   (~3–8 s, 006)
   │           │     └─ success → meta.source = "openai-websearch"
   │           └─ fallback to plain GPT-4o-mini Responses
   │                 └─ meta.source = "fallback-openai"
   │
-  └─ 4. General Q&A
+  └─ 5. General Q&A
      ├─ Voice bridge path → direct GPT-4o-mini streaming call
      └─ API direct path   → plain GPT-4o-mini Responses (same fallback engine as search)
 ```
@@ -72,6 +79,14 @@ A command is classified as **search intent** if it contains any of the following
 - Classified centrally in `src/api/skills/policy.py` as `RouteKind.TIME_QUERY`
 - Executed deterministically by `src/api/skills/time_query.py` (no LLM call)
 - API metadata: `meta.source="local-skill"`, `meta.action="time_query"`
+
+### Reminders (022)
+- Classified centrally in `src/api/skills/policy.py` as `RouteKind.REMINDER`
+- Executed deterministically by `src/api/skills/reminders.py` + `reminder_store.py`
+- API metadata stays on `meta.source="local-skill"` with reminder-specific
+  actions such as `create_reminder`, `confirm_reminder`, and `cancel_reminder`
+- Voice bridge checks active pending reminder state before stateless
+  classification and drains due reminders oldest-first only when idle
 
 ### OpenAI Websearch (primary, 006)
 - Module: `src/api/websearch.py`
@@ -102,7 +117,7 @@ A command is classified as **search intent** if it contains any of the following
   "reply_text": "...",
   "meta": {
     "source": "local-skill" | "openai-websearch" | "fallback-openai",
-    "action": "open_photoframe" | "open_bunny" | "time_query",
+    "action": "open_photoframe" | "open_bunny" | "time_query" | "create_reminder" | "confirm_reminder" | "cancel_reminder",
     "search": true | false
   }
 }

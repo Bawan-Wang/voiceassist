@@ -5,6 +5,7 @@ These tests hit the FastAPI endpoint directly (no real HTTP server needed).
 All external calls (OpenAI) are mocked via conftest.py fixtures.
 """
 import json
+from datetime import datetime
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -132,6 +133,57 @@ class TestTimeQueries:
         assert data["meta"]["time_kind"] == "time"
         assert data["meta"]["timezone"] is None
         assert data["reply_text"] == "抱歉，巴黎的時區我還不確定，你可以換個地名說法嗎？"
+
+
+class TestReminders:
+    def test_complete_reminder_creates_local_skill_response(self, client):
+        r = client.post("/zero-assistant", json={"text": "提醒我10分鐘後吃藥"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["meta"]["source"] == "local-skill"
+        assert data["meta"]["action"] == "create_reminder"
+        assert data["meta"]["reminder_id"]
+
+    def test_need_time_detail_starts_pending_confirmation(self, client):
+        r = client.post("/zero-assistant", json={"text": "明天下午提醒我開會"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["meta"]["source"] == "local-skill"
+        assert data["meta"]["action"] == "confirm_reminder"
+        assert data["meta"]["confirmation_mode"] == "need_time_detail"
+        assert data["meta"]["expires_at"]
+
+    def test_need_time_detail_follow_up_creates_reminder(self, client):
+        first = client.post("/zero-assistant", json={"text": "明天下午提醒我開會"})
+        assert first.status_code == 200
+
+        second = client.post("/zero-assistant", json={"text": "三點"})
+        assert second.status_code == 200
+        data = second.json()
+        assert data["meta"]["action"] == "create_reminder"
+        assert data["meta"]["source"] == "local-skill"
+
+    def test_confirm_candidate_decline_cancels_pending(self, client):
+        late_now = datetime.fromisoformat("2026-05-17T22:00:00+08:00")
+        with patch("src.api.skills.reminders._now_in_timezone", return_value=late_now):
+            first = client.post("/zero-assistant", json={"text": "晚上九點提醒我收衣服"})
+        assert first.status_code == 200
+        assert first.json()["meta"]["confirmation_mode"] == "confirm_candidate"
+
+        second = client.post("/zero-assistant", json={"text": "取消"})
+        assert second.status_code == 200
+        data = second.json()
+        assert data["meta"]["action"] == "cancel_reminder"
+        assert data["meta"]["source"] == "local-skill"
+
+    def test_invalid_reminder_rejects_truthfully(self, client):
+        r = client.post("/zero-assistant", json={"text": "提醒我買牛奶"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["meta"]["source"] == "local-skill"
+        assert data["meta"]["action"] == "create_reminder"
+        assert data["meta"]["reminder_status"] == "rejected"
+        assert data["meta"]["reason"] == "invalid_time"
 
 
 # ---------------------------------------------------------------------------

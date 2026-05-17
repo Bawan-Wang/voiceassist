@@ -6,6 +6,7 @@ All notable changes to this project are documented here.
 
 ### Added
 - `.docs/product-specs/smoke-tests.md` — manual smoke test list and regression negative cases (tests + acceptance criteria).
+- 022: Implement one-time reminders — deterministic parser/normalizer, durable JSON storage, pending clarification flow, and idle-only voice delivery.
 
 ### Fixed
 - 023: Fix routing false positives — tighten LOCAL_SKILL and TIME_QUERY matchers; add regression tests and docs. (Commit a7e741e)

@@ -16,13 +16,13 @@ then tell the agent: "請實作 docs/product-specs/xxx.md"
 | [`voice-pipeline.md`](voice-pipeline.md) | STT (SenseVoice), VAD (Silero/WebRTC), TTS (Piper zh-CN), audio config, language support |
 | [`ui-states.md`](ui-states.md) | idle/listening/thinking/speaking — triggers, colors, `demo_state.json` contract |
 | [`local-commands.md`](local-commands.md) | Photoframe and bunny UI switch — trigger phrases, actions, debounce behaviour |
+| [`time-queries.md`](time-queries.md) | Deterministic current time/date/weekday queries plus selected timezone aliases |
+| [`reminders.md`](reminders.md) | Implemented one-time reminders, confirmation flow, persistence, and idle-only due delivery |
 
 ## Planned Specs
 
 | File | Description |
 |------|-------------|
-| [`time-queries.md`](time-queries.md) | Planned skeleton for current time/date/weekday queries plus selected timezone and city aliases |
-| [`reminders.md`](reminders.md) | Planned skeleton for one-time reminders, relative reminders, confirmation flow, persistence, and due-time delivery |
 | [`memory.md`](memory.md) | Planned skeleton for narrow preference/profile memory and its effect on time/reminder defaults |
 
 ## How to Write a Spec

@@ -82,7 +82,7 @@ def classify_request(text: str, *, raw_transcript: str | None = None) -> RouteDe
         from .reminders import parse_reminder
 
         reminder = parse_reminder(normalized_text)
-        if reminder is not None and getattr(reminder, "mode", None) in ("create", "need_time_detail", "confirm_candidate"):
+        if reminder is not None:
             return RouteDecision(
                 kind=RouteKind.REMINDER,
                 routed_text=normalized_text,
