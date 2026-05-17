@@ -6,6 +6,8 @@ whole API stack.
 """
 from __future__ import annotations
 
+import re
+
 PHOTOFRAME_TOKENS = {
     "相框", "相簿", "照片",
     "photoframe", "album", "photos", "photo frame",
@@ -20,6 +22,28 @@ SEARCH_TOKENS = (
     "查", "搜尋", "搜索", "找", "查詢", "查一下", "幫我查", "最新", "新聞",
     "網路上", "網頁", "資料", "天氣",
     "weather", "search", "look up", "find", "browse",
+)
+
+_WAKE_PREFIX_RE = re.compile(r"^[^，,。.!！？?\s]{1,8}助理[，,、。.!！？?\s]*")
+_LEADING_FILLERS = (
+    "兔兔助理",
+    "兔助理",
+    "幫我",
+    "请帮我",
+    "請幫我",
+    "幫我把",
+    "請",
+    "请",
+    "麻煩",
+    "麻烦",
+)
+_TRAILING_PUNCT = "呢嗎呀啊了?？!！,，.。:： "
+_ENGLISH_COMMAND_PREFIXES = (
+    "open ",
+    "show ",
+    "show me ",
+    "switch ",
+    "switch to ",
 )
 
 
@@ -45,15 +69,43 @@ def _has_any(text: str, tokens: set[str]) -> bool:
     return False
 
 
+def _normalize_command_text(text: str) -> tuple[str, str]:
+    normalized = (text or "").strip()
+    if not normalized:
+        return "", ""
+
+    normalized = _WAKE_PREFIX_RE.sub("", normalized).strip(_TRAILING_PUNCT)
+    lowered = normalized.lower()
+    for prefix in _LEADING_FILLERS:
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix):].lstrip(_TRAILING_PUNCT)
+            lowered = normalized.lower()
+            break
+    return normalized, lowered
+
+
+def _looks_like_command(text: str, lower: str) -> bool:
+    if not text:
+        return False
+    if any(lower.startswith(prefix) for prefix in _ENGLISH_COMMAND_PREFIXES):
+        return True
+    return any(text.startswith(verb) for verb in VERB_TOKENS if not verb.isascii())
+
+
 def matches_photoframe(text: str) -> bool:
-    """A command counts as 'open photoframe' when it mentions any
-    photoframe noun. Verb is optional — '相框' alone is enough."""
-    return _has_any(text, PHOTOFRAME_TOKENS)
+    """Return True only for command-like photoframe requests."""
+    normalized, lower = _normalize_command_text(text)
+    if not _looks_like_command(normalized, lower):
+        return False
+    return _has_any(normalized, PHOTOFRAME_TOKENS)
 
 
 def matches_bunny(text: str) -> bool:
-    """'兔兔' / 'bunny' alone is enough to switch back to bunny UI."""
-    return _has_any(text, BUNNY_TOKENS)
+    """Return True only for command-like bunny UI requests."""
+    normalized, lower = _normalize_command_text(text)
+    if not _looks_like_command(normalized, lower):
+        return False
+    return _has_any(normalized, BUNNY_TOKENS)
 
 
 def is_local_skill(text: str) -> bool:

@@ -22,7 +22,12 @@ class TestLocalSkillDetection:
     def test_chitchat_does_not_route_local(self):
         assert not is_local_skill("你好")
         assert not is_local_skill("今天幾號")
+        assert not is_local_skill("你喜歡兔兔嗎")
+        assert not is_local_skill("相框是什麼")
         assert not is_local_skill("")
+
+    def test_wake_prefixed_bunny_command_stays_local(self):
+        assert is_local_skill("兔兔助理切回兔兔")
 
     def test_voice_bridge_reexports_is_local_skill(self):
         # voice_bridge imports the helper — make sure the symbol exists.

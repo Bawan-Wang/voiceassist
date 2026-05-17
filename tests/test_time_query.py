@@ -32,6 +32,9 @@ class TestTimeQueryParser:
     def test_non_time_text_returns_none(self):
         assert parse_time_query("幫我查台北天氣") is None
         assert parse_time_query("你好") is None
+        assert parse_time_query("我有時間嗎") is None
+        assert parse_time_query("請問有時間嗎") is None
+        assert parse_time_query("我有时间吗") is None
 
     def test_unknown_place_requires_clarification(self):
         intent = parse_time_query("巴黎現在幾點")

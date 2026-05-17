@@ -2,6 +2,17 @@
 
 ## Current Focus
 
+- ✅ Exec-plan 023 done — routing false positives are now tightened in the
+  shared classifier boundary. `src/api/skills/tokens.py` no longer treats bare
+  noun mention (`兔兔`, `相框`, `照片`) as a device-action command; local skills
+  now require command-style phrasing after lightweight wake/filler trimming.
+  `src/api/skills/time_query.py` now rejects conversational `有時間嗎 / 有时间吗`
+  phrasing so it stays on chat instead of falling into timezone clarification.
+  Regression coverage was added in routing/time-query/token tests, including
+  preserved raw-transcript wake-strip fallback. Validation:
+  `pytest -q tests/test_time_query.py tests/test_routing_policy.py tests/test_api.py tests/test_voice_bridge_local_routing.py`
+  passed (49), and current full suite `pytest -q` passed (105).
+
 - ✅ Exec-plan 021 done — deterministic time queries are now implemented end to
   end. Added src/api/skills/time_query.py for local parser/formatter logic,
   added RouteKind.TIME_QUERY in shared classify_request(), wired

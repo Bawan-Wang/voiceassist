@@ -40,12 +40,16 @@ class TestTokens:
         ("切回兔兔", True),
         ("打開兔兔", True),
         ("switch to bunny", True),
-        ("hello bunny", True),
+        ("hello bunny", False),
         ("打開相框", False),
         ("你好", False),
     ])
     def test_bunny_tokens(self, text, expected):
         assert matches_bunny(text) is expected
+
+    def test_topic_mentions_do_not_match_local_skills(self):
+        assert matches_bunny("兔兔好可愛") is False
+        assert matches_photoframe("我想看照片展") is False
 
     def test_is_local_skill(self):
         assert is_local_skill("打開相框")

@@ -4,13 +4,13 @@ from src.api.skills.policy import RouteKind, classify_request
 
 
 class TestRoutingPolicy:
-    def test_local_skill_wins_over_search_token_collision(self):
+    def test_search_token_plus_bunny_topic_stays_search(self):
         decision = classify_request("幫我查兔兔")
 
-        assert decision.kind == RouteKind.LOCAL_SKILL
-        assert decision.skill is open_bunny
+        assert decision.kind == RouteKind.TOOL_NEEDED
+        assert decision.skill is None
         assert decision.routed_text == "幫我查兔兔"
-        assert decision.is_search is False
+        assert decision.is_search is True
         assert decision.used_raw_transcript is False
 
     def test_search_becomes_tool_needed(self):
@@ -60,3 +60,15 @@ class TestRoutingPolicy:
         assert decision.kind == RouteKind.LOCAL_SKILL
         assert decision.skill is open_photoframe
         assert decision.routed_text == "打開相框"
+
+    def test_bunny_topic_chitchat_stays_chat(self):
+        decision = classify_request("你喜歡兔兔嗎")
+
+        assert decision.kind == RouteKind.CHAT
+        assert decision.skill is None
+
+    def test_photoframe_topic_chitchat_stays_chat(self):
+        decision = classify_request("我想看照片展")
+
+        assert decision.kind == RouteKind.CHAT
+        assert decision.skill is None

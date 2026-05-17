@@ -7,20 +7,25 @@
 
 ## Summary
 
-Certain commands are handled entirely locally without any LLM call. They are matched by keyword presence in the incoming text and execute a direct system action.
+Certain commands are handled entirely locally without any LLM call. They are
+matched by lightweight command-style rules in the incoming text and execute a
+direct system action.
 
 ---
 
 ## Command: Open Photoframe (a.k.a. Album)
 
 ### Trigger Phrases
-Any noun token alone is sufficient (verb is optional):
+Command-like phrasing is required. Topic mention alone is **not** sufficient.
 
 | Object tokens |
 |---------------|
 | `相框`, `相簿`, `照片`, `photoframe`, `album`, `photos`, `photo frame` |
 
 Examples: `打開相框`、`打開相簿`、`打開照片`、`open photoframe`、`show me the album`
+
+Counter-examples that must stay in normal chat:
+`相框是什麼`、`我想看照片展`
 
 ### Action — `src/api/skills/open_photoframe.py::run()`
 1. Write `bunny_should_exit=true` to `/tmp/voiceassist_signal.json`
@@ -43,13 +48,16 @@ Rapid re-triggers within 2.5 s reply with `"已收到，正在切換到相框。
 ## Command: Switch to Bunny UI
 
 ### Trigger Phrases
-Any token alone is sufficient:
+Command-like phrasing is required. Topic mention alone is **not** sufficient.
 
 | Object tokens |
 |---------------|
 | `兔兔`, `bunny` |
 
 Examples: `切回兔兔`、`打開bunny`、`switch to bunny`
+
+Counter-examples that must stay in normal chat:
+`你喜歡兔兔嗎`、`兔兔好可愛`
 
 ### Action — `src/api/skills/open_bunny.py::run()`
 1. Write `photoframe_should_exit=true` (008 will honour this; 007 still relies on kill-9)

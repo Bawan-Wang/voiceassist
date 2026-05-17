@@ -140,6 +140,10 @@ def parse_time_query(text: str) -> TimeQueryIntent | None:
     has_alias = bool(timezone_name)
     unknown_place = None if has_alias else _extract_unknown_place(normalized, kind)
 
+    if kind == "time" and ("有時間" in normalized or "有时间" in normalized):
+        if not has_alias and not has_now and "幾點" not in normalized and "几点" not in normalized and "what time" not in lower:
+            return None
+
     if kind == "time" and not has_alias and unknown_place is None and not has_now and "幾點" not in normalized and "what time" not in lower:
         return None
 
