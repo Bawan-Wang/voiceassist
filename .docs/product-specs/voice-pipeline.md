@@ -7,7 +7,7 @@
 
 ## Summary
 
-The voice pipeline handles the full audio lifecycle: capturing microphone input, detecting speech segments, transcribing to text, and synthesizing spoken replies. All components run locally on-device.
+The voice pipeline handles the full audio lifecycle: capturing microphone input, detecting speech segments, transcribing to text, routing the transcript, and synthesizing spoken replies. Audio I/O, VAD, STT, and TTS run locally on-device, while reply generation may be deterministic local logic or OpenAI-backed depending on the route.
 
 ---
 
@@ -24,7 +24,10 @@ The voice pipeline handles the full audio lifecycle: capturing microphone input,
      │  transcribed text string
      ▼
 [Wake Word / Intent Logic]  ← see wake-word.md, intent-routing.md
-     │  reply_text string
+     │  pending reminder follow-up or classify_request(...)
+     ├─ deterministic local path  → local skill / reminder / time query via `POST /zero-assistant`
+     ├─ search path               → `POST /zero-assistant` → OpenAI `web_search`
+     └─ general chat path         → direct GPT-4o-mini streaming
      ▼
 [TTS] — Text-to-Speech
      │  audio chunks (sentence-chunked for streaming)
@@ -105,6 +108,11 @@ The voice pipeline handles the full audio lifecycle: capturing microphone input,
 - For general Q&A replies (GPT-4o-mini streaming): text is chunked into sentences
 - Each sentence is synthesized and queued in a background thread
 - Playback starts as soon as the first sentence is ready — does not wait for full reply
+
+### Reply Sources
+- `RouteKind.LOCAL_SKILL` / `RouteKind.REMINDER` / `RouteKind.TIME_QUERY` → `src/api/app.py` returns deterministic local reply text
+- `RouteKind.TOOL_NEEDED` → `src/api/app.py` uses OpenAI Responses + `web_search`, with plain OpenAI fallback on failure
+- `RouteKind.CHAT` → `src/bridge/voice_bridge.py` streams GPT-4o-mini directly and speaks sentence chunks as they arrive
 
 ---
 

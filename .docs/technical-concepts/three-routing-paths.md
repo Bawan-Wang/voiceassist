@@ -18,7 +18,8 @@ Since exec-plan 020, these three paths are selected by the shared
 `classify_request()` policy in `src/api/skills/policy.py`. The voice runtime and
 HTTP endpoint still keep separate executors after that classification step.
 
-- Deterministic local actions use a local-skill fast path.
+- Deterministic local execution uses an API-backed fast path for local skills,
+  reminders, and time queries.
 - General conversation uses direct GPT streaming inside the voice bridge.
 - Search and weather use the API path plus OpenAI `web_search`.
 
@@ -26,7 +27,7 @@ HTTP endpoint still keep separate executors after that classification step.
 
 | Path | Trigger | Goes through API | Uses LLM | Uses tool | Typical use |
 |---|---|---:|---:|---:|---|
-| Deterministic local | `RouteKind.LOCAL_SKILL` or `RouteKind.TIME_QUERY` | Yes | No | No | Open photoframe, switch back to bunny, current time / date / weekday |
+| Deterministic local | `RouteKind.LOCAL_SKILL`, `RouteKind.REMINDER`, or `RouteKind.TIME_QUERY` | Yes | No | No | Open photoframe, create / confirm reminder, current time / date / weekday |
 | General Q&A | `RouteKind.CHAT` | No | Yes | No | Chitchat, explanation, general knowledge |
 | Search / weather | `RouteKind.TOOL_NEEDED` | Yes | Yes | Yes | Real-time info, latest news, weather, browsing |
 
@@ -40,6 +41,7 @@ Examples:
 
 - `打開相框`
 - `切回兔兔`
+- `十分鐘後提醒我倒垃圾`
 - `現在幾點`
 - `今天星期幾`
 
@@ -48,22 +50,25 @@ Examples:
 ```text
 User speech
   -> STT transcript
-        -> classify_request(...) returns LOCAL_SKILL or TIME_QUERY
+                -> classify_request(...) returns LOCAL_SKILL or REMINDER or TIME_QUERY
   -> POST /zero-assistant
-    -> api/app.py runs match_skill(...) or render_time_query_reply(...)
+      -> src/api/app.py runs match_skill(...) or execute_reminder_request(...) or render_time_query_reply(...)
   -> reply_text returned
   -> voice bridge speaks the reply
 ```
 
 ### Why this path exists
 
-The repository intentionally avoids sending deterministic device actions and
-clock/date answers to GPT first. That reduces latency and avoids the model
-answering *about* the command instead of executing it or guessing clock data.
+The repository intentionally avoids sending deterministic device actions,
+reminder scheduling, and clock/date answers to GPT first. That reduces latency
+and avoids the model answering *about* the command instead of executing it or
+guessing local state.
 
 ### Main code paths
 
 - `src/api/skills/tokens.py`
+- `src/api/skills/reminders.py`
+- `src/api/skills/reminder_store.py`
 - `src/api/skills/time_query.py`
 - `src/bridge/voice_bridge.py`
 - `src/api/app.py`
@@ -91,18 +96,20 @@ Path: `src/api/skills/policy.py`
 ```python
 decision = classify_request(command, raw_transcript=transcript)
 if decision.kind is RouteKind.LOCAL_SKILL:
-    reply = self._reply_via_api(decision.routed_text)
+    self._route_reply_via_api(decision.routed_text)
+elif decision.kind is RouteKind.REMINDER:
+    self._route_reply_via_api(decision.routed_text)
 elif decision.kind is RouteKind.TIME_QUERY:
-    reply = self._reply_via_api(decision.routed_text)
+    self._route_reply_via_api(decision.routed_text)
 elif decision.kind is RouteKind.TOOL_NEEDED:
-    reply = self.generate_reply(decision.routed_text, search=True)
+    self._route_reply_via_api(decision.routed_text)
 else:
-    reply = self.stream_reply_and_speak(decision.routed_text)
+    self.stream_reply_and_speak(decision.routed_text)
 ```
 
-Time queries and local device skills both stay on the deterministic local path,
-but time queries use a dedicated `RouteKind.TIME_QUERY` branch so the API can
-attach time-specific metadata.
+Reminders, time queries, and local device skills all stay on the deterministic
+local path, but reminder and time-query requests use dedicated route kinds so
+the API can attach route-specific metadata and state handling.
 
 ### Key snippet: API dispatches to the local skill registry first
 
@@ -117,6 +124,19 @@ if decision.kind is RouteKind.LOCAL_SKILL and decision.skill is not None:
         meta={"source": "local-skill", "action": decision.skill.NAME},
     )
 ```
+
+### Key snippet: API executes deterministic time queries locally
+
+Path: `src/api/app.py`
+
+```python
+if decision.kind is RouteKind.REMINDER:
+    outcome = execute_reminder_request(text)
+    return AssistResponse(reply_text=outcome.reply_text, meta=outcome.meta)
+```
+
+Reminder requests stay on the same deterministic path as local device actions,
+but the executor is the reminder parser / store instead of a skill module.
 
 ### Key snippet: API executes deterministic time queries locally
 
@@ -249,7 +269,7 @@ User speech
   -> STT transcript
     -> classify_request(...) returns TOOL_NEEDED
   -> POST /zero-assistant
-    -> api/app.py sees the same tool-needed route
+        -> src/api/app.py sees the same tool-needed route
   -> src/api/websearch.py calls OpenAI Responses + web_search tool
   -> reply_text returned to voice bridge
   -> voice bridge normalizes speech output and speaks it
@@ -297,6 +317,22 @@ if decision.kind is RouteKind.LOCAL_SKILL and decision.skill is not None:
         meta={"source": "local-skill", "action": decision.skill.NAME},
     )
 
+if decision.kind is RouteKind.REMINDER:
+    outcome = execute_reminder_request(text)
+    return AssistResponse(reply_text=outcome.reply_text, meta=outcome.meta)
+
+if decision.kind is RouteKind.TIME_QUERY and decision.time_query is not None:
+    reply = render_time_query_reply(decision.time_query)
+    return AssistResponse(
+        reply_text=reply,
+        meta={
+            "source": "local-skill",
+            "action": "time_query",
+            "time_kind": decision.time_query.kind,
+            "timezone": decision.time_query.timezone,
+        },
+    )
+
 if decision.kind is RouteKind.TOOL_NEEDED and os.environ.get("VOICEASSIST_DISABLE_WEBSEARCH", "").strip() != "1":
     try:
         from .websearch import run_websearch
@@ -337,7 +373,7 @@ This is the only one of the three paths that is clearly using a tool call.
 
 If you want to add a new capability, use this checklist:
 
-### Choose local skill when
+### Choose deterministic local path when
 
 - The action is deterministic.
 - The result comes from local state or the device itself.
@@ -348,6 +384,7 @@ Typical examples:
 
 - open photoframe
 - switch to bunny UI
+- create or confirm a reminder
 - tell current time
 - tell current date
 - device control
@@ -389,8 +426,8 @@ local device skills.
 
 For `voiceassist` today:
 
-- local skills still resolve through deterministic skill matching first
-- the shared classifier decides local skill vs tool-needed vs chat
+- local skills, reminders, and time queries still resolve through deterministic matching first
+- the shared classifier decides local skill vs reminder vs time-query vs tool-needed vs chat
 - general Q&A still goes directly to GPT from the voice bridge
 - search/weather still goes through the API and uses OpenAI `web_search`
 

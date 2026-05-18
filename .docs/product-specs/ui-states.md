@@ -1,19 +1,19 @@
 # Spec: UI States
 
-**Module:** `src/ui/assistant_ui.py`, `src/api/app.py`
+**Module:** `src/ui/assistant_ui.py`, `src/bridge/voice_bridge.py`
 **Status:** Implemented ✅
 
 ---
 
 ## Summary
 
-The bunny face UI (`assistant_ui.py`) reflects the assistant's current activity through four visual states. State is communicated via a shared JSON file polled by the UI process.
+The bunny face UI (`assistant_ui.py`) reflects the assistant's current activity through four visual states. State is communicated via a shared JSON file written by the voice bridge and polled by the UI process.
 
 ---
 
 ## Shared State Contract
 
-**File:** `data/demo_state.json` (gitignored, created at runtime)
+**File:** `data/demo_state.json` by default (gitignored, created at runtime via `config.yaml → voiceBridge.state_path`)
 
 ```json
 {
@@ -25,9 +25,9 @@ The bunny face UI (`assistant_ui.py`) reflects the assistant's current activity 
 
 | Field | Written by | Read by |
 |-------|-----------|---------|
-| `phase` | `src/api/app.py` | `src/ui/assistant_ui.py` |
-| `userText` | `src/api/app.py` | `src/ui/assistant_ui.py` |
-| `assistantText` | `src/api/app.py` | `src/ui/assistant_ui.py` |
+| `phase` | `src/bridge/voice_bridge.py` | `src/ui/assistant_ui.py` |
+| `userText` | `src/bridge/voice_bridge.py` | `src/ui/assistant_ui.py` |
+| `assistantText` | `src/bridge/voice_bridge.py` | `src/ui/assistant_ui.py` |
 
 ---
 
@@ -52,7 +52,7 @@ The bunny face UI (`assistant_ui.py`) reflects the assistant's current activity 
 ### `thinking`
 | Property | Value |
 |----------|-------|
-| Trigger | Command received, LLM/agent call in progress |
+| Trigger | Command received, deterministic handler / search / chat reply generation in progress |
 | Display color | `#E3C9FF` (soft purple) |
 | Background | `#10121a` |
 | UI behaviour | Bunny face processing animation |
@@ -100,7 +100,7 @@ From `config.yaml → display`:
 | Resolution | 1280 × 720 |
 | Fullscreen | `false` |
 | Target FPS | 60 |
-| Poll interval | UI polls `demo_state.json` each frame |
+| Poll interval | UI polls the configured state file each frame |
 
 ---
 

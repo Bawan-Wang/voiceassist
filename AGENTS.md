@@ -55,7 +55,7 @@ src/ui/assistant_ui.py      PyGame bunny face UI, polls data/demo_state.json
 data/demo_state.json        Runtime shared state (gitignored)
 config.yaml                 Display config plus `voiceBridge` runtime/provider settings
 rabbitctl.sh                Start / stop / restart / status all services
-tests/                      Pytest harness (see .docs/HOW_TO_USE_THIS_REPO.md)
+tests/                      Pytest harness
 .docs/                      Specs, architecture, exec plans, rules, tech debt
 PLAN.md                     Global blueprint and overall project progress
 ```
@@ -64,14 +64,15 @@ PLAN.md                     Global blueprint and overall project progress
 
 ## LLM Routing
 
+- **Voice bridge path**: local skills, reminders, and time queries → local `POST /zero-assistant` in `src/api/app.py` → deterministic execution in the skill / reminder / time-query handlers
 - **Voice bridge path**: search / weather / browse intent → local `POST /zero-assistant` in `src/api/app.py` → **OpenAI Responses API + `web_search` tool** (`src/api/websearch.py`, ~3–8 s)
 - **Fallback chain on search failure**: OpenAI websearch → plain OpenAI GPT-4o-mini Responses
 - **Voice bridge path**: general Q&A → direct **OpenAI GPT-4o-mini** call from `src/bridge/voice_bridge.py`
-- **Direct API path**: `/zero-assistant` still handles local display commands first; same routing/fallback chain as above
+- **Direct API path**: `/zero-assistant` resolves pending reminder follow-up first when present, then handles local skills, reminders, and time queries before the same search/fallback chain
 - Search replies are normalized for TTS, and `src/bridge/voice_bridge.py` may rewrite noisy search text into a short spoken Traditional Chinese form before `Piper` playback
-- `meta.source` values: `local-skill` | `local-command` | `openai-websearch` | `fallback-openai`
+- `meta.source` values: `local-skill` | `openai-websearch` | `fallback-openai`
 - Rollback: set `VOICEASSIST_DISABLE_WEBSEARCH=1` to skip the websearch path and go straight to the plain OpenAI fallback
-- Do not assume local commands in `src/api/app.py` are reachable from the default voice-bridge path; today they are only guaranteed on the direct API path
+- The default voice-bridge path does route local skills, reminders, and time queries through `src/api/app.py`; only general chat bypasses the API
 
 ---
 

@@ -6,35 +6,38 @@
 [Microphone]
      │
      ▼
-bridge/voice_bridge.py
+src/bridge/voice_bridge.py
   - Captures audio via sounddevice (PipeWire/pulse)
   - Silero VAD segments utterances (falls back to WebRTC VAD)
   - Local Sherpa-ONNX STT (sense_voice)
   - Wake word matching (3-tier: exact → token-combo → fuzzy)
+  - Pending reminder follow-up can bypass stateless classification
   - Calls shared classify_request(...) after text exists
-  - Local skill / search → speaks hint if needed, then POSTs to api/app.py
+  - Local skill / reminder / time query / search → speaks hint if needed, then POSTs to src/api/app.py
   - General Q&A → direct GPT-4o-mini streaming response
-  - Does not send general Q&A to `api/app.py`
+  - Does not send general Q&A to `src/api/app.py`
   - Search replies are normalized for TTS and may be rewritten into a speech-friendly form
+  - Due reminders are delivered idle-only by the bridge poller
   - Sentence-chunked local Piper TTS synthesis and playback via ffplay
      │
-     │  POST /zero-assistant  { "text": "..." }  (local skill / tool-needed)
+  │  POST /zero-assistant  { "text": "..." }  (local skill / reminder / time query / tool-needed)
      ▼
-api/app.py  (FastAPI, 127.0.0.1:8000)
+src/api/app.py  (FastAPI, 127.0.0.1:8000)
   - Calls shared classify_request(text)
-  - Deterministic local intents first (local skills + time queries)
+  - Handles pending reminder follow-up before stateless classification
+  - Deterministic local intents first (local skills + reminders + time queries)
   - Search/weather/browse → OpenAI Responses + `web_search` tool (006, ~3–8 s)
       └ on failure → plain OpenAI Responses fallback
   - Non-search → plain OpenAI Responses
-  - Returns { "reply_text": "...", "meta": { "source": "openai-websearch|fallback-openai|local-skill", "search": bool } }
+  - Returns { "reply_text": "...", "meta": { "source": "openai-websearch|fallback-openai|local-skill", "action": optional, "search": bool } }
      │
-     │  writes data/demo_state.json  { phase, userText, assistantText }
+  │  src/bridge/voice_bridge.py writes data/demo_state.json  { phase, userText, assistantText }
      ├──────────────────────────────────────────────────────────────────►
-     │                                                          ui/assistant_ui.py
+  │                                                          src/ui/assistant_ui.py
      │                                                           PyGame bunny face
      │                                                           polls JSON ~60fps
      ▼
-bridge/voice_bridge.py  (receives reply_text)
+src/bridge/voice_bridge.py  (receives reply_text)
   - Search path: normalize text → optional GPT spoken rewrite → local Piper TTS
   - General Q&A path: sentence-chunked local Piper TTS
   - Plays WAV via ffplay → Speaker
@@ -45,7 +48,7 @@ bridge/voice_bridge.py  (receives reply_text)
 | Component | File | Key Decisions |
 |-----------|------|---------------|
 | Voice Bridge | `src/bridge/voice_bridge.py` | Audio I/O, Silero/WebRTC VAD, wake word, STT, GPT direct path, search speech cleanup, streaming TTS |
-| API Backend | `src/api/app.py` | Routes local commands, then websearch (006) → plain OpenAI fallback chain |
+| API Backend | `src/api/app.py` | Routes local skills, reminders, and time queries deterministically, then websearch (006) → plain OpenAI fallback chain |
 | Websearch Provider | `src/api/websearch.py` | OpenAI Responses + `web_search` tool; disabled with `VOICEASSIST_DISABLE_WEBSEARCH=1` |
 | Bunny UI | `src/ui/assistant_ui.py` | Animation only, reads state from JSON |
 | Control Script | `rabbitctl.sh` | Process management, env var injection |
@@ -55,8 +58,8 @@ bridge/voice_bridge.py  (receives reply_text)
 
 There are currently two different routing entry paths in the repo:
 
-- `bridge/voice_bridge.py` is the default live voice runtime.
-- `api/app.py` is the direct HTTP entrypoint for `/zero-assistant`.
+- `src/bridge/voice_bridge.py` is the default live voice runtime.
+- `src/api/app.py` is the direct HTTP entrypoint for `/zero-assistant`.
 
 They now share the same text-classification policy, but they still do **not**
 start from the same runtime stage or use the same executors.
@@ -74,9 +77,19 @@ once text is available.
 ```
 transcribed voice input
   │
+  ├─ pending reminder follow-up exists
+  │      → POST `/zero-assistant`
+  │      → reminder resolution / confirmation handling
+  │      → local Piper playback
+  │
   ├─ classify_request(..., raw_transcript=transcript) == LOCAL_SKILL
   │      → POST `/zero-assistant`
   │      → receive `reply_text`
+  │      → local Piper playback
+  │
+  ├─ classify_request(..., raw_transcript=transcript) == REMINDER
+  │      → POST `/zero-assistant`
+  │      → receive deterministic reminder reply_text
   │      → local Piper playback
   │
   ├─ classify_request(..., raw_transcript=transcript) == TIME_QUERY
@@ -108,6 +121,9 @@ text input
       ├─ LOCAL_SKILL
       │      → local skill.run()
       │
+      ├─ REMINDER
+      │      → deterministic reminder parser / store
+      │
       ├─ TIME_QUERY
       │      → deterministic local formatter (no LLM call)
       │
@@ -119,7 +135,7 @@ text input
         → plain OpenAI GPT-4o-mini Responses fallback (final reply)
 ```
 
-Search replies then stay inside `bridge/voice_bridge.py` for a second stage:
+Search replies then stay inside `src/bridge/voice_bridge.py` for a second stage:
 
 ```
 reply_text from /zero-assistant
@@ -131,9 +147,9 @@ reply_text from /zero-assistant
 ## Data Flow for State Updates
 
 ```
-voice_bridge calls update_state(phase, userText, assistantText)
-    → writes data/demo_state.json
-    → ui/assistant_ui.py reads it on next frame
+voice_bridge calls update_state(self.cfg.state_path, phase, userText, assistantText)
+  → writes data/demo_state.json by default (`config.yaml` → `voiceBridge.state_path`)
+  → src/ui/assistant_ui.py reads it on next frame
     → face color / ear angle / mouth animation changes
 ```
 

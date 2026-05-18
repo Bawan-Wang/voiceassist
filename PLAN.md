@@ -12,7 +12,7 @@ A local voice assistant running on Raspberry Pi that:
 
 ```
 src/bridge/voice_bridge.py   Mic → VAD → STT → wake word → intent routing → TTS
-src/api/app.py               FastAPI backend — local skills + websearch (search/weather) + OpenAI fallback
+src/api/app.py               FastAPI backend — local skills + reminders + time queries + websearch (search/weather) + OpenAI fallback
 src/ui/assistant_ui.py       PyGame bunny face UI
 tests/                       Pytest harness
 .docs/                       Specs, architecture, exec plans, rules
@@ -41,7 +41,7 @@ tests/                       Pytest harness
 | 19 | Add GitHub-hosted CI + code scanning baseline (exec-plan 018A) | ✅ Done |
 | 20 | Add Raspberry Pi self-hosted hardware smoke workflow (exec-plan 018B) | ✅ Done |
 | 21 | Shared routing policy (exec-plan 020) | ✅ Done |
-| 22 | Plan time queries, reminders, and memory as the next product surface | 🚧 In Progress |
+| 22 | Define memory product boundary as the next planned user-facing surface | 🚧 In Progress |
 | 23 | Fix routing false positives (exec-plan 023) | ✅ Done |
 | 24 | Implement deterministic time queries (exec-plan 021) | ✅ Done |
 | 25 | Implement one-time reminders (exec-plan 022) | ✅ Done |
@@ -52,31 +52,25 @@ tests/                       Pytest harness
 
 ## Next Product Work
 
-The next planned user-facing capability set is:
+Recently completed user-facing capability work:
 
 1. Time queries
 2. Reminders
-3. Memory
 
-These three areas are intentionally sequenced in that order:
+Current remaining planned user-facing capability:
 
-- Time queries are the smallest deterministic skill surface and should be the
-  first implementation target.
-- Reminders depend on time parsing, normalization, and delivery behavior, so
-  they should follow after the time-query rules are stable.
-- Memory should come last because it changes cross-feature behavior and needs a
-  tighter product boundary than the first two features.
+1. Memory
 
 Current planning status:
 
 - `.docs/product-specs/time-queries.md` has been implemented via
   exec-plan 021.
-- `.docs/product-specs/reminders.md` has now been implemented via
+- `.docs/product-specs/reminders.md` has been implemented via
   exec-plan 022.
 - `.docs/product-specs/memory.md` exists as a planned skeleton and still needs
   to be expanded into a full implementation-ready spec.
 
-The expected flow for this product area is now:
+The expected flow for the remaining product area is now:
 
 1. Complete `memory.md` with a narrow first-phase scope.
 2. Create the corresponding memory exec-plan once the product boundary is stable.
@@ -98,4 +92,5 @@ See `.docs/exec-plans/done/` — includes 001 (env), 002 (vlm-bridge), 003
 018A (github-hosted-ci-and-code-scanning-baseline),
 018B (raspberry-pi-self-hosted-hardware-smoke),
 019 (document-voice-vs-http-entrypoints),
-020 (shared-routing-policy), 021 (implement-time-queries), 023 (fix-routing-false-positives).
+020 (shared-routing-policy), 021 (implement-time-queries),
+022 (implement-reminders), 023 (fix-routing-false-positives).

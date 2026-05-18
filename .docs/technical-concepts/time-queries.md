@@ -13,7 +13,8 @@ Time queries are intentionally not handled by general chat generation.
 The repository treats them as deterministic local logic because:
 
 - current time must come from a local clock source, not a model guess,
-- reminder features later will depend on the same timezone semantics,
+- reminder features already reuse the same timezone semantics, and reminder
+    routing now sits ahead of time queries when reminder language is present,
 - the voice path needs a short TTS-friendly answer with low latency,
 - unsupported place names must ask for clarification instead of silently
   guessing a timezone.

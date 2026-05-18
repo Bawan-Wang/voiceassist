@@ -8,24 +8,26 @@ A Raspberry Pi voice assistant with an animated bunny face UI. Speak the wake wo
 Microphone
   │
   ▼
-bridge/voice_bridge.py   ← Silero VAD → STT (Sherpa-ONNX local) → wake word detection
+src/bridge/voice_bridge.py   ← Silero VAD → STT (Sherpa-ONNX local) → wake word detection
   │
-  ├─ local skill / search / weather / browse ── POST /zero-assistant
-  │                                 ▼
-  │                               api/app.py (FastAPI) → shared classifier
-  │                                 ├─ local skill executor
-  │                                 ├─ OpenAI Responses + web_search
-  │                                 └─ plain OpenAI fallback
-  │                                 ▼
-  │                               reply_text back to bridge
-  │                                 ▼
-  │                               normalize spoken text → optional spoken rewrite → Piper
+  ├─ local skill / reminder / time query / search / weather / browse ── POST /zero-assistant
+  │                                                    ▼
+  │                                                  src/api/app.py (FastAPI) → shared classifier
+  │                                                    ├─ local skill executor
+  │                                                    ├─ deterministic reminder executor
+  │                                                    ├─ deterministic time-query formatter
+  │                                                    ├─ OpenAI Responses + web_search
+  │                                                    └─ plain OpenAI fallback
+  │                                                    ▼
+  │                                                  reply_text back to bridge
+  │                                                    ▼
+  │                                                  normalize spoken text → optional spoken rewrite → Piper
   │
   └─ general Q&A / chat ───────→ OpenAI GPT-4o-mini (direct, streaming in bridge)
   │
   │  writes data/demo_state.json
   ▼
-ui/assistant_ui.py (PyGame)  ← polls JSON → animates face + text
+src/ui/assistant_ui.py (PyGame)  ← polls JSON → animates face + text
   │
   ▼
 Speaker (ffplay ← local Piper playback)
@@ -33,9 +35,9 @@ Speaker (ffplay ← local Piper playback)
 
 | Component | File | Role |
 |---|---|---|
-| Bunny UI | `ui/assistant_ui.py` | PyGame animated face, polls `data/demo_state.json` |
-| Voice Bridge | `bridge/voice_bridge.py` | Mic capture, Silero VAD, STT, wake word, shared request classification for local-skill/search paths, direct streaming chat, search-reply speech cleanup, streaming TTS playback |
-| API Backend | `api/app.py` | FastAPI text entrypoint for `/zero-assistant`; runs shared classification plus local skill execution, OpenAI `web_search`, or plain OpenAI fallback |
+| Bunny UI | `src/ui/assistant_ui.py` | PyGame animated face, polls `data/demo_state.json` |
+| Voice Bridge | `src/bridge/voice_bridge.py` | Mic capture, Silero VAD, STT, wake word, shared request classification, direct streaming chat, reminder delivery, search-reply speech cleanup, streaming TTS playback |
+| API Backend | `src/api/app.py` | FastAPI text entrypoint for `/zero-assistant`; runs shared classification plus local skill execution, deterministic reminder / time-query handling, OpenAI `web_search`, or plain OpenAI fallback |
 | Control Script | `rabbitctl.sh` | Unified start / stop / restart / status |
 | UI + Voice Config | `config.yaml` | UI settings plus `voiceBridge` runtime config for VAD/STT/TTS/routing/model selection |
 | Shared State | `data/demo_state.json` | Runtime state between bridge and UI (gitignored) |
@@ -122,20 +124,24 @@ Each phase change updates `data/demo_state.json`, which the PyGame UI picks up w
 
 ## Supported Commands
 
-- **Voice bridge: local display commands** — *「打開相框 / 開啟 photoframe」* and *「打開兔兔 / 切回 bunny」* are classified by the shared routing policy, then routed to `api/app.py`
-- **Voice bridge: weather / search / browse** — *「幫我查」、「最新新聞」、「台北天氣」* routes to `api/app.py`, which then uses OpenAI `web_search`
-- **Voice bridge: general Q&A** — anything not classified as search is answered directly by `bridge/voice_bridge.py` via `GPT-4o-mini`
-- **Direct API: local display commands** — *「打開相框 / 開啟 photoframe」* and *「打開兔兔 / 切回 bunny」* are still handled inside `api/app.py`
+- **Voice bridge: local display commands** — *「打開相框 / 開啟 photoframe」* and *「打開兔兔 / 切回 bunny」* are classified by the shared routing policy, then routed to `src/api/app.py`
+- **Voice bridge: reminders** — *「十分鐘後提醒我倒垃圾」* and *「明天下午三點提醒我開會」* are routed to `src/api/app.py` for deterministic parsing / storage; due reminders are then spoken by the bridge when it is idle
+- **Voice bridge: time queries** — *「現在幾點」*、*「今天星期幾」*、*「日本現在幾點」* route to `src/api/app.py` for deterministic local replies
+- **Voice bridge: weather / search / browse** — *「幫我查」、「最新新聞」、「台北天氣」* routes to `src/api/app.py`, which then uses OpenAI `web_search`
+- **Voice bridge: general Q&A** — anything not classified as a local skill, reminder, time query, or search is answered directly by `src/bridge/voice_bridge.py` via `GPT-4o-mini`
+- **Direct API** — local display commands, reminder create / confirm / cancel flows, and time queries are handled inside `src/api/app.py`
 
 ## Voice Pipeline
 
 - **VAD**: `Silero VAD` (auto-downloaded on first run), fallback to `WebRTC VAD` if unavailable
 - **STT**: local `Sherpa-ONNX` (`sense_voice` int8 model, auto-downloaded on first run)
-- **Shared classifier**: once text exists, `src/api/skills/policy.py` classifies it as local skill, tool-needed/search, or chat; the voice bridge passes `raw_transcript` so wake-strip recovery still works for local skills
-- **Voice-bridge local-skill path**: shared classifier → `/zero-assistant` → local skill executor in `api/app.py` → local `Piper`
-- **Voice-bridge search path**: tool-needed/search → speak quick hint → `/zero-assistant` → OpenAI `web_search` in `api/app.py` → local TTS text normalization → spoken-form rewrite for noisy results → `Piper`
-- **Voice-bridge general Q&A path**: direct `GPT-4o-mini` streaming response inside `bridge/voice_bridge.py`
-- **Direct API path**: requests sent straight to `/zero-assistant` call the same shared classifier, then use local skill execution, OpenAI `web_search`, or plain OpenAI fallback inside `api/app.py`
+- **Shared classifier**: once text exists, `src/api/skills/policy.py` classifies it as local skill, reminder, time query, tool-needed/search, or chat; the voice bridge passes `raw_transcript` so wake-strip recovery still works for local skills
+- **Voice-bridge local-skill path**: shared classifier → `/zero-assistant` → local skill executor in `src/api/app.py` → local `Piper`
+- **Voice-bridge reminder path**: active pending reminder follow-up may bypass stateless classification; reminder requests route to `/zero-assistant` → deterministic reminder parser / store in `src/api/skills/reminders.py` → local `Piper`, while due reminders are delivered idle-only by the bridge poller
+- **Voice-bridge time-query path**: shared classifier → `/zero-assistant` → deterministic formatter in `src/api/skills/time_query.py` → local `Piper`
+- **Voice-bridge search path**: tool-needed/search → speak quick hint → `/zero-assistant` → OpenAI `web_search` in `src/api/app.py` → local TTS text normalization → spoken-form rewrite for noisy results → `Piper`
+- **Voice-bridge general Q&A path**: direct `GPT-4o-mini` streaming response inside `src/bridge/voice_bridge.py`
+- **Direct API path**: requests sent straight to `/zero-assistant` first handle pending reminder follow-up when present, then use shared classification for local skill execution, deterministic reminder / time-query handling, OpenAI `web_search`, or plain OpenAI fallback inside `src/api/app.py`
 - **TTS**: local `Piper TTS`; search replies are normalized before playback and may be rewritten into a more spoken-friendly Traditional Chinese form before synthesis, while general Q&A is played sentence-by-sentence from the streaming GPT output
 
 ## Configuration
@@ -165,7 +171,7 @@ voiceBridge:
 - choose the active STT / TTS provider entry via `stt.active` and `tts.active`
 - change model paths and download URLs per provider
 - tune VAD thresholds, wake behavior, routing timeouts, and prompts
-- keep `rabbitctl.sh`, `bridge/voice_bridge.py`, and the UI pointed at the same config file
+- keep `rabbitctl.sh`, `src/bridge/voice_bridge.py`, and the UI pointed at the same config file
 
 If you later add another provider entry, you can switch models by editing only `config.yaml`.
 ```

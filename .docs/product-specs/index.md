@@ -3,7 +3,7 @@
 This folder contains feature specifications for voiceassist.
 
 When requesting a new feature from an AI agent, create a file here first,
-then tell the agent: "請實作 docs/product-specs/xxx.md"
+then tell the agent: "請實作 .docs/product-specs/xxx.md"
 
 ---
 

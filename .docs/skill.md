@@ -5,7 +5,7 @@
 | Service | Command | Description |
 |---------|---------|-------------|
 | FastAPI backend | `uvicorn src.api.app:app` | Intent routing, LLM calls |
-| Voice bridge | `src/bridge/voice_bridge.py` | Mic → VAD → STT → TTS pipeline |
+| Voice bridge | `python -m src.bridge.voice_bridge` | Mic → VAD → STT → TTS pipeline |
 | Bunny UI | `src/ui/assistant_ui.py` | PyGame animated face, polls `data/demo_state.json` |
 | Photoframe | `run_photoframe.sh` | External Kivy photoframe app |
 
@@ -21,9 +21,7 @@ Package: `src/api/skills/`
 | Open bunny | `open_bunny` | `兔兔 / bunny` | Signal photoframe to exit → kill photoframe → relaunch `assistant_ui.py` |
 
 Dispatcher: `src.api.skills.match_skill(text)`. Manual `SKILLS = [...]`
-list (option A) so an import error in one skill cannot disable the others.
-When the local LLM tool-calling work lands, this same registry will be
-exposed as the tool-call surface.
+list so an import error in one skill cannot disable the others.
 
 IPC: `/tmp/voiceassist_signal.json` — see `_signal.py`. Atomic writes via
 `tempfile + os.replace`.
@@ -31,7 +29,10 @@ IPC: `/tmp/voiceassist_signal.json` — see `_signal.py`. Atomic writes via
 Shared routing surface: `src.api.skills.policy.classify_request()` is the
 canonical decision point for both the voice bridge and `api/app.py`. It keeps
 route order in one place while reusing the existing skill registry and token
-helpers under the hood.
+helpers under the hood. Current stateless route order is local skill →
+reminder → time query → tool-needed/search → chat; reminder follow-up
+resolution can run before that stateless classifier in the API and voice
+runtime.
 
 ### External app contract — photoframe (008)
 
@@ -64,12 +65,13 @@ Python 3 + apt kivy). Contract:
 ## Local AI Models
 
 ### STT — Sherpa-ONNX `sense_voice`
-- Config: `config.yaml → voiceBridge.asr`
+- Config: `config.yaml → voiceBridge.stt`
 - Runs fully offline on device
 
 ### TTS — Piper
-- Binary must be on `$PATH`
 - Config: `config.yaml → voiceBridge.tts`
+- Models are loaded by the in-repo Python provider; no standalone `piper`
+  binary on `$PATH` is required
 - Runs fully offline on device
 
 ### VAD — Silero (primary) / WebRTC (fallback)
@@ -77,10 +79,11 @@ Python 3 + apt kivy). Contract:
 
 ## Shared State
 
-- `data/demo_state.json` — runtime shared state between API and UI
+- `data/demo_state.json` — runtime shared state between voice bridge and UI
+  (default path from `config.yaml → voiceBridge.state_path`)
   ```json
   { "phase": "idle|listening|thinking|speaking", "userText": "...", "assistantText": "..." }
   ```
-  - Written by `src/api/app.py`
+  - Written by `src/bridge/voice_bridge.py`
   - Read by `src/ui/assistant_ui.py`
   - Gitignored

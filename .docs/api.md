@@ -7,7 +7,8 @@ Base URL: `http://127.0.0.1:8000`
 ### `POST /zero-assistant`
 
 Routes already-available text through the shared classifier to a local skill,
-OpenAI websearch, or plain OpenAI.
+deterministic reminder flow, deterministic time query, OpenAI websearch, or
+plain OpenAI.
 
 This endpoint is the HTTP text entrypoint only. It does not own microphone
 capture, VAD, STT, wake-word handling, or TTS; those belong to the voice
@@ -32,8 +33,11 @@ runtime described in [technical-concepts/entrypoints.md](technical-concepts/entr
 ```
 
 **Routing logic** (see `.docs/product-specs/intent-routing.md` for full tree)
-- Shared classifier (`src/api/skills/policy.py`) returns `LOCAL_SKILL`, `TOOL_NEEDED`, or `CHAT`
+- Pending reminder follow-up is resolved first when a reminder confirmation is active
+- Shared classifier (`src/api/skills/policy.py`) returns `LOCAL_SKILL`, `REMINDER`, `TIME_QUERY`, `TOOL_NEEDED`, or `CHAT`
 - `LOCAL_SKILL` (open photoframe, open bunny UI) → handled directly, no LLM call
+- `REMINDER` → deterministic parser / store flow in `src/api/skills/reminders.py`
+- `TIME_QUERY` → deterministic formatter in `src/api/skills/time_query.py`
 - `TOOL_NEEDED` (search / weather / browse) → OpenAI Responses + `web_search` tool (006); on failure falls back to plain OpenAI
 - `CHAT` → plain OpenAI Responses
 
@@ -41,9 +45,8 @@ runtime described in [technical-concepts/entrypoints.md](technical-concepts/entr
 
 ---
 
-### `GET /health`
-
-Returns `{"status": "ok"}` — used by `rabbitctl.sh status`.
+There is currently no dedicated `GET /health` endpoint. `rabbitctl.sh status`
+checks process state with `pgrep` rather than calling the API.
 
 ---
 
@@ -54,8 +57,10 @@ Not an HTTP API — conceptual runtime flow:
 ```
 capture_audio() → vad_segment() → stt_transcribe()
   → wake-word / follow-up gating
-  → classify_request(command, raw_transcript=transcript)
+  → pending reminder follow-up or classify_request(command, raw_transcript=transcript)
     → LOCAL_SKILL → POST /zero-assistant → skill.run()
+    → REMINDER → POST /zero-assistant → execute_reminder_request()
+    → TIME_QUERY → POST /zero-assistant → render_time_query_reply()
     → TOOL_NEEDED → POST /zero-assistant → run_websearch() or plain OpenAI fallback
     → CHAT → direct OpenAI streaming in bridge
   → tts_speak()

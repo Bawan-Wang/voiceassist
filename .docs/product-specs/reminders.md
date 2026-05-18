@@ -1,7 +1,7 @@
 # Spec: Reminders
 
-**Module:** `src/api/skills/`, `src/api/app.py`, `src/bridge/voice_bridge.py`, future reminder store modules
-**Status:** Implementation-ready ✅
+**Module:** `src/api/skills/`, `src/api/app.py`, `src/bridge/voice_bridge.py`, `src/api/skills/reminder_store.py`
+**Status:** Implemented ✅
 
 ---
 
@@ -15,8 +15,8 @@ plus UI state path.
 This spec owns reminder creation, normalization, confirmation, persistence, and
 delivery behavior.
 
-This is the target behavior for exec-plan 022. The current runtime does not yet
-implement reminders.
+This behavior was implemented in exec-plan 022 and is now the current runtime
+behavior.
 
 ---
 
@@ -105,8 +105,7 @@ Examples:
 
 ## Route Ownership And Precedence
 
-After reminder implementation lands, the shared `classify_request(...)` order
-must be:
+The current shared `classify_request(...)` order is:
 
 1. local skill
 2. reminder

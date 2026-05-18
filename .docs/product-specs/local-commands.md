@@ -32,7 +32,7 @@ Counter-examples that must stay in normal chat:
 2. Sleep 0.5s so the bunny UI can run its fade-out
 3. Hard-kill any leftover bunny / photoframe processes (fallback)
 4. Launch `run_photoframe.sh` (which now has a kivy preflight)
-5. Wait up to 1.0s for `/tmp/photoframe.ready`
+5. Wait up to 1.5s for `/tmp/photoframe.ready`
 6. If kivy was missing or launch failed → reply: `"相框打不開，可能少裝套件，請看 /tmp/photoframe.log。"`
 
 ### Reply (success)
@@ -60,8 +60,8 @@ Counter-examples that must stay in normal chat:
 `你喜歡兔兔嗎`、`兔兔好可愛`
 
 ### Action — `src/api/skills/open_bunny.py::run()`
-1. Write `photoframe_should_exit=true` (008 will honour this; 007 still relies on kill-9)
-2. Sleep 0.3s
+1. Write `photoframe_should_exit=true` to `/tmp/voiceassist_signal.json`
+2. Sleep 0.6s so photoframe can fade out and clean up
 3. Hard-kill any leftover photoframe / bunny processes
 4. Clear `bunny_should_exit=false` so the freshly launched bunny doesn't immediately quit
 5. Launch `src/ui/assistant_ui.py` with `DISPLAY=:0`
@@ -108,18 +108,22 @@ failure reply (`"相框打不開…"`).
 
 ## Evaluation Order
 
-Local skills are checked **before** search intent detection and LLM routing,
-both in the API (`src/api/app.py`) and in the voice bridge
-(`src/bridge/voice_bridge.py::is_local_skill`):
+Local skills are checked before reminder, time-query, search, and chat routing
+inside the shared classifier used by both the API and the voice bridge. The
+voice bridge also passes `raw_transcript` so local-skill fallback still works
+when wake stripping removes part of the command:
 
 ```
 Incoming text
       │
       ▼
-match_skill(text)?
-  YES → skill.run() + return reply (no LLM call)
-        meta.source = "local-skill", meta.action = NAME
-  NO  → continue to intent-routing.md
+classify_request(text, raw_transcript=...)
+  ├─ LOCAL_SKILL → skill.run() + return reply (no LLM call)
+  │                meta.source = "local-skill", meta.action = NAME
+  ├─ REMINDER    → continue to reminder flow
+  ├─ TIME_QUERY  → continue to deterministic time-query flow
+  ├─ TOOL_NEEDED → continue to search flow
+  └─ CHAT        → continue to direct GPT chat flow
 ```
 
 ---
